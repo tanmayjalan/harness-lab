@@ -1,0 +1,3 @@
+anthropic
+tzdata  # time-zone data for get_current_time (Windows has none built in)
+mcp     # tools from MCP servers (mcp_tools.py); the harness still runs without it

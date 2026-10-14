@@ -1,0 +1,534 @@
+[
+ {
+  "seq": 0,
+  "kind": "user",
+  "time": 1791901988.8757873,
+  "msg": 1,
+  "text": "Use a helper to summarise notes.md"
+ },
+ {
+  "seq": 1,
+  "kind": "request",
+  "time": 1791901988.8792722,
+  "msg": 1,
+  "turn": 1,
+  "max_turns": 20,
+  "messages": [
+   {
+    "role": "user",
+    "content": "Use a helper to summarise notes.md"
+   }
+  ],
+  "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+  "max_tokens": 16000,
+  "thinking": null,
+  "output_config": null,
+  "cache": false,
+  "provider": "DeepSeek",
+  "model": "deepseek-flash",
+  "facts": 0,
+  "edited": [],
+  "trimmed": null,
+  "start_changed": false,
+  "hooks": {
+   "file": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\no_hooks.py",
+   "functions": [],
+   "problem": null
+  },
+  "tools": [
+   {
+    "name": "list_files",
+    "description": "List the files and folders inside a folder.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "read_file",
+    "description": "Read a text file and return its contents.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "write_file",
+    "description": "Create or overwrite a text file.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "search_files",
+    "description": "Search the text files in the workspace for words, and get back the best-matching files with their matching lines. Use it to find which file holds something before reading it (e.g. a policy in handbook/), instead of reading every file.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "submit_expense",
+    "description": "File an expense in the expenses system. Fill every field exactly in the shape given: an ISO date, a positive amount, a currency code and a category from the lists.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_weather",
+    "description": "The real current weather for a city, in Celsius (live from Open-Meteo).",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "convert_temperature",
+    "description": "Convert a temperature between celsius, fahrenheit and kelvin.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "calculate",
+    "description": "Work out an arithmetic expression exactly. Use this instead of doing maths in your head. Supports + - * / // % ** and brackets, e.g. (2450 * 17) / 100.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_current_time",
+    "description": "The current date and time in a time zone.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "roll_dice",
+    "description": "Roll dice and return each roll and the total.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "remember_fact",
+    "description": "Save a lasting fact or preference about the user (for example their name, preferred units or how they like answers) so it is shared in every future conversation. Use it when the user tells you something about themselves that will still be true later, not for one-off details. Depending on the user's settings, they may be asked to approve the save first.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "delegate",
+    "description": "Hand a self-contained job to a helper agent. The helper starts a fresh conversation of its own, with read-only tools (list and read files, calculator, weather, time, dice), does the work, and returns only a short report, so the details don't fill up this conversation. Use it for jobs that need a lot of reading or many lookups, e.g. 'read these 5 files and summarise what each does'. Give a clear task and say what the report should contain.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "update_plan",
+    "description": "Write or update your step-by-step plan for a task that needs 3 or more steps. Send the WHOLE list every time, each step with a status: pending, in_progress (only one at a time) or done. Make the plan before you start, and update it as you finish each step. The user sees it live. Skip it for simple questions.",
+    "source": "built in",
+    "permission": "allow"
+   }
+  ],
+  "config": {
+   "provider": "deepseek",
+   "label": "DeepSeek",
+   "model": "deepseek-flash",
+   "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+   "system_edited": false,
+   "descriptions": [],
+   "permissions": {},
+   "trim": null,
+   "compact": null,
+   "thinking": null,
+   "cache": null,
+   "apply": "message",
+   "limits": null,
+   "skills": null,
+   "faults": null,
+   "tools_at_once": null,
+   "workflow": null,
+   "run_code": null,
+   "extra_tools": null,
+   "facts_shared": 0,
+   "edited": []
+  }
+ },
+ {
+  "seq": 2,
+  "kind": "response",
+  "time": 1791901988.8895528,
+  "msg": 1,
+  "turn": 1,
+  "stop_reason": "tool_use",
+  "content": [
+   {
+    "id": "d1",
+    "input": {
+     "task": "Read notes.md and summarise it",
+     "report": "one line"
+    },
+    "name": "delegate",
+    "type": "tool_use"
+   }
+  ],
+  "usage": {
+   "cache_read_input_tokens": 0,
+   "input_tokens": 1200,
+   "output_tokens": 80
+  },
+  "cost": 0.000456
+ },
+ {
+  "seq": 3,
+  "kind": "tool_call",
+  "time": 1791901988.8895724,
+  "msg": 1,
+  "id": "d1",
+  "name": "delegate",
+  "input": {
+   "task": "Read notes.md and summarise it",
+   "report": "one line"
+  },
+  "permission": "allow",
+  "outside": false,
+  "source": "built in"
+ },
+ {
+  "seq": 4,
+  "kind": "sub",
+  "time": 1791901988.889619,
+  "msg": 1,
+  "step": "request",
+  "helper": "d1",
+  "call": 1,
+  "turn": 1,
+  "max_turns": 12,
+  "messages": [
+   {
+    "role": "user",
+    "content": "Read notes.md and summarise it\n\nReport back: one line"
+   }
+  ],
+  "system": "You are a helper agent. Another AI agent gave you a task. Use your tools to do it, then reply with a short, factual report (at most about 150 words) containing exactly what was asked for, and nothing else. You can't ask questions: if something is unclear, make a sensible choice and say so in the report.",
+  "max_tokens": 16000,
+  "thinking": null,
+  "output_config": null,
+  "cache": false
+ },
+ {
+  "seq": 5,
+  "kind": "sub",
+  "time": 1791901988.9003484,
+  "msg": 1,
+  "step": "response",
+  "helper": "d1",
+  "call": 1,
+  "turn": 1,
+  "stop_reason": "tool_use",
+  "content": [
+   {
+    "id": "h1",
+    "input": {
+     "path": "notes.md"
+    },
+    "name": "read_file",
+    "type": "tool_use"
+   }
+  ],
+  "usage": {
+   "cache_read_input_tokens": 0,
+   "input_tokens": 700,
+   "output_tokens": 40
+  },
+  "cost": 0.000258
+ },
+ {
+  "seq": 6,
+  "kind": "sub",
+  "time": 1791901988.901641,
+  "msg": 1,
+  "step": "tool_call",
+  "helper": "d1",
+  "call": 1,
+  "id": "h1",
+  "name": "read_file",
+  "input": {
+   "path": "notes.md"
+  },
+  "permission": "allow",
+  "outside": false
+ },
+ {
+  "seq": 7,
+  "kind": "sub",
+  "time": 1791901988.9031026,
+  "msg": 1,
+  "step": "tool_result",
+  "helper": "d1",
+  "call": 1,
+  "result": {
+   "type": "tool_result",
+   "tool_use_id": "h1",
+   "content": "# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n"
+  },
+  "outcome": "ran"
+ },
+ {
+  "seq": 8,
+  "kind": "sub",
+  "time": 1791901988.90315,
+  "msg": 1,
+  "step": "request",
+  "helper": "d1",
+  "call": 2,
+  "turn": 2,
+  "max_turns": 12,
+  "messages": [
+   {
+    "role": "user",
+    "content": "Read notes.md and summarise it\n\nReport back: one line"
+   },
+   {
+    "role": "assistant",
+    "content": [
+     {
+      "id": "h1",
+      "input": {
+       "path": "notes.md"
+      },
+      "name": "read_file",
+      "type": "tool_use"
+     }
+    ]
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "h1",
+      "content": "# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n# Notes\n- launch on 15 October\n"
+     }
+    ]
+   }
+  ],
+  "system": "You are a helper agent. Another AI agent gave you a task. Use your tools to do it, then reply with a short, factual report (at most about 150 words) containing exactly what was asked for, and nothing else. You can't ask questions: if something is unclear, make a sensible choice and say so in the report.",
+  "max_tokens": 16000,
+  "thinking": null,
+  "output_config": null,
+  "cache": false
+ },
+ {
+  "seq": 9,
+  "kind": "sub",
+  "time": 1791901988.9133563,
+  "msg": 1,
+  "step": "response",
+  "helper": "d1",
+  "call": 2,
+  "turn": 2,
+  "stop_reason": "end_turn",
+  "content": [
+   {
+    "text": "notes.md: launch plans for 15 October.",
+    "type": "text"
+   }
+  ],
+  "usage": {
+   "cache_read_input_tokens": 0,
+   "input_tokens": 1400,
+   "output_tokens": 30
+  },
+  "cost": 0.000456
+ },
+ {
+  "seq": 10,
+  "kind": "tool_result",
+  "time": 1791901988.9134107,
+  "msg": 1,
+  "result": {
+   "type": "tool_result",
+   "tool_use_id": "d1",
+   "content": "notes.md: launch plans for 15 October."
+  },
+  "outcome": "ran"
+ },
+ {
+  "seq": 11,
+  "kind": "request",
+  "time": 1791901988.9135196,
+  "msg": 1,
+  "turn": 2,
+  "max_turns": 20,
+  "messages": [
+   {
+    "role": "user",
+    "content": "Use a helper to summarise notes.md"
+   },
+   {
+    "role": "assistant",
+    "content": [
+     {
+      "id": "d1",
+      "input": {
+       "task": "Read notes.md and summarise it",
+       "report": "one line"
+      },
+      "name": "delegate",
+      "type": "tool_use"
+     }
+    ]
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "d1",
+      "content": "notes.md: launch plans for 15 October."
+     }
+    ]
+   }
+  ],
+  "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+  "max_tokens": 16000,
+  "thinking": null,
+  "output_config": null,
+  "cache": false,
+  "provider": "DeepSeek",
+  "model": "deepseek-flash",
+  "facts": 0,
+  "edited": [],
+  "trimmed": null,
+  "start_changed": false,
+  "hooks": {
+   "file": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\no_hooks.py",
+   "functions": [],
+   "problem": null
+  },
+  "tools": [
+   {
+    "name": "list_files",
+    "description": "List the files and folders inside a folder.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "read_file",
+    "description": "Read a text file and return its contents.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "write_file",
+    "description": "Create or overwrite a text file.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "search_files",
+    "description": "Search the text files in the workspace for words, and get back the best-matching files with their matching lines. Use it to find which file holds something before reading it (e.g. a policy in handbook/), instead of reading every file.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "submit_expense",
+    "description": "File an expense in the expenses system. Fill every field exactly in the shape given: an ISO date, a positive amount, a currency code and a category from the lists.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_weather",
+    "description": "The real current weather for a city, in Celsius (live from Open-Meteo).",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "convert_temperature",
+    "description": "Convert a temperature between celsius, fahrenheit and kelvin.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "calculate",
+    "description": "Work out an arithmetic expression exactly. Use this instead of doing maths in your head. Supports + - * / // % ** and brackets, e.g. (2450 * 17) / 100.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_current_time",
+    "description": "The current date and time in a time zone.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "roll_dice",
+    "description": "Roll dice and return each roll and the total.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "remember_fact",
+    "description": "Save a lasting fact or preference about the user (for example their name, preferred units or how they like answers) so it is shared in every future conversation. Use it when the user tells you something about themselves that will still be true later, not for one-off details. Depending on the user's settings, they may be asked to approve the save first.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "delegate",
+    "description": "Hand a self-contained job to a helper agent. The helper starts a fresh conversation of its own, with read-only tools (list and read files, calculator, weather, time, dice), does the work, and returns only a short report, so the details don't fill up this conversation. Use it for jobs that need a lot of reading or many lookups, e.g. 'read these 5 files and summarise what each does'. Give a clear task and say what the report should contain.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "update_plan",
+    "description": "Write or update your step-by-step plan for a task that needs 3 or more steps. Send the WHOLE list every time, each step with a status: pending, in_progress (only one at a time) or done. Make the plan before you start, and update it as you finish each step. The user sees it live. Skip it for simple questions.",
+    "source": "built in",
+    "permission": "allow"
+   }
+  ],
+  "config": {
+   "provider": "deepseek",
+   "label": "DeepSeek",
+   "model": "deepseek-flash",
+   "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+   "system_edited": false,
+   "descriptions": [],
+   "permissions": {},
+   "trim": null,
+   "compact": null,
+   "thinking": null,
+   "cache": null,
+   "apply": "message",
+   "limits": null,
+   "skills": null,
+   "faults": null,
+   "tools_at_once": null,
+   "workflow": null,
+   "run_code": null,
+   "extra_tools": null,
+   "facts_shared": 0,
+   "edited": []
+  }
+ },
+ {
+  "seq": 12,
+  "kind": "response",
+  "time": 1791901988.9237232,
+  "msg": 1,
+  "turn": 2,
+  "stop_reason": "end_turn",
+  "content": [
+   {
+    "text": "The helper says: launch plans for 15 October.",
+    "type": "text"
+   }
+  ],
+  "usage": {
+   "cache_read_input_tokens": 0,
+   "input_tokens": 1200,
+   "output_tokens": 80
+  },
+  "cost": 0.000456
+ },
+ {
+  "seq": 13,
+  "kind": "answer",
+  "time": 1791901988.9237578,
+  "msg": 1,
+  "text": "The helper says: launch plans for 15 October.",
+  "provider": "DeepSeek",
+  "model": "deepseek-flash"
+ },
+ {
+  "seq": 14,
+  "kind": "done",
+  "time": 1791901988.9272382,
+  "msg": 1
+ }
+]

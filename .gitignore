@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.tmp
+
+# Everything the lab saves as you use it: your profile, settings, conversations, tool log.
+# Personal, so it stays off any shared copy.
+data/
+
+# Browser-test leftovers
+.playwright-mcp/
+
+# The page's build tools (the built page in harness/web/static IS kept)
+node_modules/
+ui/dist/
+ui/.vite/
+
+# Local working notes
+.ux-review/
+.superpowers/
+
+# Editor / assistant tool settings
+.claude/

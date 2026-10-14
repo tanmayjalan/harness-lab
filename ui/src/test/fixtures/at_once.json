@@ -1,0 +1,502 @@
+[
+ {
+  "seq": 0,
+  "kind": "user",
+  "time": 1791901990.302487,
+  "msg": 1,
+  "text": "Work out 18*3, roll a die and tell me the time in Tokyo"
+ },
+ {
+  "seq": 1,
+  "kind": "request",
+  "time": 1791901990.3059435,
+  "msg": 1,
+  "turn": 1,
+  "max_turns": 20,
+  "messages": [
+   {
+    "role": "user",
+    "content": "Work out 18*3, roll a die and tell me the time in Tokyo"
+   }
+  ],
+  "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+  "max_tokens": 16000,
+  "thinking": null,
+  "output_config": null,
+  "cache": false,
+  "provider": "DeepSeek",
+  "model": "deepseek-flash",
+  "facts": 0,
+  "edited": [
+   "tools at once"
+  ],
+  "trimmed": null,
+  "start_changed": false,
+  "hooks": {
+   "file": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\no_hooks.py",
+   "functions": [],
+   "problem": null
+  },
+  "tools": [
+   {
+    "name": "list_files",
+    "description": "List the files and folders inside a folder.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "read_file",
+    "description": "Read a text file and return its contents.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "write_file",
+    "description": "Create or overwrite a text file.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "search_files",
+    "description": "Search the text files in the workspace for words, and get back the best-matching files with their matching lines. Use it to find which file holds something before reading it (e.g. a policy in handbook/), instead of reading every file.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "submit_expense",
+    "description": "File an expense in the expenses system. Fill every field exactly in the shape given: an ISO date, a positive amount, a currency code and a category from the lists.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_weather",
+    "description": "The real current weather for a city, in Celsius (live from Open-Meteo).",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "convert_temperature",
+    "description": "Convert a temperature between celsius, fahrenheit and kelvin.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "calculate",
+    "description": "Work out an arithmetic expression exactly. Use this instead of doing maths in your head. Supports + - * / // % ** and brackets, e.g. (2450 * 17) / 100.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_current_time",
+    "description": "The current date and time in a time zone.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "roll_dice",
+    "description": "Roll dice and return each roll and the total.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "remember_fact",
+    "description": "Save a lasting fact or preference about the user (for example their name, preferred units or how they like answers) so it is shared in every future conversation. Use it when the user tells you something about themselves that will still be true later, not for one-off details. Depending on the user's settings, they may be asked to approve the save first.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "delegate",
+    "description": "Hand a self-contained job to a helper agent. The helper starts a fresh conversation of its own, with read-only tools (list and read files, calculator, weather, time, dice), does the work, and returns only a short report, so the details don't fill up this conversation. Use it for jobs that need a lot of reading or many lookups, e.g. 'read these 5 files and summarise what each does'. Give a clear task and say what the report should contain.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "update_plan",
+    "description": "Write or update your step-by-step plan for a task that needs 3 or more steps. Send the WHOLE list every time, each step with a status: pending, in_progress (only one at a time) or done. Make the plan before you start, and update it as you finish each step. The user sees it live. Skip it for simple questions.",
+    "source": "built in",
+    "permission": "allow"
+   }
+  ],
+  "config": {
+   "provider": "deepseek",
+   "label": "DeepSeek",
+   "model": "deepseek-flash",
+   "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+   "system_edited": false,
+   "descriptions": [],
+   "permissions": {},
+   "trim": null,
+   "compact": null,
+   "thinking": null,
+   "cache": null,
+   "apply": "message",
+   "limits": null,
+   "skills": null,
+   "faults": null,
+   "tools_at_once": {
+    "enabled": true
+   },
+   "workflow": null,
+   "run_code": null,
+   "extra_tools": null,
+   "facts_shared": 0,
+   "edited": [
+    "tools at once"
+   ]
+  }
+ },
+ {
+  "seq": 2,
+  "kind": "response",
+  "time": 1791901990.3164754,
+  "msg": 1,
+  "turn": 1,
+  "stop_reason": "tool_use",
+  "content": [
+   {
+    "id": "a1",
+    "input": {
+     "expression": "18*3"
+    },
+    "name": "calculate",
+    "type": "tool_use"
+   },
+   {
+    "id": "a2",
+    "input": {
+     "sides": 6
+    },
+    "name": "roll_dice",
+    "type": "tool_use"
+   },
+   {
+    "id": "a3",
+    "input": {
+     "timezone": "Asia/Tokyo"
+    },
+    "name": "get_current_time",
+    "type": "tool_use"
+   }
+  ],
+  "usage": {
+   "cache_read_input_tokens": 0,
+   "input_tokens": 1500,
+   "output_tokens": 90
+  },
+  "cost": 0.000558
+ },
+ {
+  "seq": 3,
+  "kind": "tools_at_once",
+  "time": 1791901990.3165019,
+  "msg": 1,
+  "turn": 1,
+  "count": 3,
+  "together": true,
+  "reason": null
+ },
+ {
+  "seq": 4,
+  "kind": "tool_call",
+  "time": 1791901990.3165107,
+  "msg": 1,
+  "id": "a1",
+  "name": "calculate",
+  "input": {
+   "expression": "18*3"
+  },
+  "permission": "allow",
+  "outside": false,
+  "together": true,
+  "source": "built in"
+ },
+ {
+  "seq": 5,
+  "kind": "tool_call",
+  "time": 1791901990.3165178,
+  "msg": 1,
+  "id": "a2",
+  "name": "roll_dice",
+  "input": {
+   "sides": 6
+  },
+  "permission": "allow",
+  "outside": false,
+  "together": true,
+  "source": "built in"
+ },
+ {
+  "seq": 6,
+  "kind": "tool_call",
+  "time": 1791901990.3165236,
+  "msg": 1,
+  "id": "a3",
+  "name": "get_current_time",
+  "input": {
+   "timezone": "Asia/Tokyo"
+  },
+  "permission": "allow",
+  "outside": false,
+  "together": true,
+  "source": "built in"
+ },
+ {
+  "seq": 7,
+  "kind": "tool_result",
+  "time": 1791901990.317564,
+  "msg": 1,
+  "result": {
+   "type": "tool_result",
+   "tool_use_id": "a2",
+   "content": "Rolled 1d6: [4] (total 4)"
+  },
+  "outcome": "ran"
+ },
+ {
+  "seq": 8,
+  "kind": "tool_result",
+  "time": 1791901990.3175757,
+  "msg": 1,
+  "result": {
+   "type": "tool_result",
+   "tool_use_id": "a1",
+   "content": "18*3 = 54"
+  },
+  "outcome": "ran"
+ },
+ {
+  "seq": 9,
+  "kind": "tool_result",
+  "time": 1791901990.3184826,
+  "msg": 1,
+  "result": {
+   "type": "tool_result",
+   "tool_use_id": "a3",
+   "content": "Tuesday 13 October 2026, 23:33 in Asia/Tokyo (UTC+0900)"
+  },
+  "outcome": "ran"
+ },
+ {
+  "seq": 10,
+  "kind": "request",
+  "time": 1791901990.3187604,
+  "msg": 1,
+  "turn": 2,
+  "max_turns": 20,
+  "messages": [
+   {
+    "role": "user",
+    "content": "Work out 18*3, roll a die and tell me the time in Tokyo"
+   },
+   {
+    "role": "assistant",
+    "content": [
+     {
+      "id": "a1",
+      "input": {
+       "expression": "18*3"
+      },
+      "name": "calculate",
+      "type": "tool_use"
+     },
+     {
+      "id": "a2",
+      "input": {
+       "sides": 6
+      },
+      "name": "roll_dice",
+      "type": "tool_use"
+     },
+     {
+      "id": "a3",
+      "input": {
+       "timezone": "Asia/Tokyo"
+      },
+      "name": "get_current_time",
+      "type": "tool_use"
+     }
+    ]
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "a1",
+      "content": "18*3 = 54"
+     },
+     {
+      "type": "tool_result",
+      "tool_use_id": "a2",
+      "content": "Rolled 1d6: [4] (total 4)"
+     },
+     {
+      "type": "tool_result",
+      "tool_use_id": "a3",
+      "content": "Tuesday 13 October 2026, 23:33 in Asia/Tokyo (UTC+0900)"
+     }
+    ]
+   }
+  ],
+  "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+  "max_tokens": 16000,
+  "thinking": null,
+  "output_config": null,
+  "cache": false,
+  "provider": "DeepSeek",
+  "model": "deepseek-flash",
+  "facts": 0,
+  "edited": [
+   "tools at once"
+  ],
+  "trimmed": null,
+  "start_changed": false,
+  "hooks": {
+   "file": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\no_hooks.py",
+   "functions": [],
+   "problem": null
+  },
+  "tools": [
+   {
+    "name": "list_files",
+    "description": "List the files and folders inside a folder.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "read_file",
+    "description": "Read a text file and return its contents.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "write_file",
+    "description": "Create or overwrite a text file.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "search_files",
+    "description": "Search the text files in the workspace for words, and get back the best-matching files with their matching lines. Use it to find which file holds something before reading it (e.g. a policy in handbook/), instead of reading every file.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "submit_expense",
+    "description": "File an expense in the expenses system. Fill every field exactly in the shape given: an ISO date, a positive amount, a currency code and a category from the lists.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_weather",
+    "description": "The real current weather for a city, in Celsius (live from Open-Meteo).",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "convert_temperature",
+    "description": "Convert a temperature between celsius, fahrenheit and kelvin.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "calculate",
+    "description": "Work out an arithmetic expression exactly. Use this instead of doing maths in your head. Supports + - * / // % ** and brackets, e.g. (2450 * 17) / 100.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_current_time",
+    "description": "The current date and time in a time zone.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "roll_dice",
+    "description": "Roll dice and return each roll and the total.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "remember_fact",
+    "description": "Save a lasting fact or preference about the user (for example their name, preferred units or how they like answers) so it is shared in every future conversation. Use it when the user tells you something about themselves that will still be true later, not for one-off details. Depending on the user's settings, they may be asked to approve the save first.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "delegate",
+    "description": "Hand a self-contained job to a helper agent. The helper starts a fresh conversation of its own, with read-only tools (list and read files, calculator, weather, time, dice), does the work, and returns only a short report, so the details don't fill up this conversation. Use it for jobs that need a lot of reading or many lookups, e.g. 'read these 5 files and summarise what each does'. Give a clear task and say what the report should contain.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "update_plan",
+    "description": "Write or update your step-by-step plan for a task that needs 3 or more steps. Send the WHOLE list every time, each step with a status: pending, in_progress (only one at a time) or done. Make the plan before you start, and update it as you finish each step. The user sees it live. Skip it for simple questions.",
+    "source": "built in",
+    "permission": "allow"
+   }
+  ],
+  "config": {
+   "provider": "deepseek",
+   "label": "DeepSeek",
+   "model": "deepseek-flash",
+   "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+   "system_edited": false,
+   "descriptions": [],
+   "permissions": {},
+   "trim": null,
+   "compact": null,
+   "thinking": null,
+   "cache": null,
+   "apply": "message",
+   "limits": null,
+   "skills": null,
+   "faults": null,
+   "tools_at_once": {
+    "enabled": true
+   },
+   "workflow": null,
+   "run_code": null,
+   "extra_tools": null,
+   "facts_shared": 0,
+   "edited": [
+    "tools at once"
+   ]
+  }
+ },
+ {
+  "seq": 11,
+  "kind": "response",
+  "time": 1791901990.3295424,
+  "msg": 1,
+  "turn": 2,
+  "stop_reason": "end_turn",
+  "content": [
+   {
+    "text": "54, a roll, and the time in Tokyo.",
+    "type": "text"
+   }
+  ],
+  "usage": {
+   "cache_read_input_tokens": 0,
+   "input_tokens": 1900,
+   "output_tokens": 30
+  },
+  "cost": 0.000606
+ },
+ {
+  "seq": 12,
+  "kind": "answer",
+  "time": 1791901990.329674,
+  "msg": 1,
+  "text": "54, a roll, and the time in Tokyo.",
+  "provider": "DeepSeek",
+  "model": "deepseek-flash"
+ },
+ {
+  "seq": 13,
+  "kind": "done",
+  "time": 1791901990.336595,
+  "msg": 1
+ }
+]

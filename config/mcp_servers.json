@@ -1,0 +1,11 @@
+{
+  "about": "MCP servers whose tools the harness offers to the model. Each one is a program the harness starts (from the Harness folder) and talks to. \"python\" means the harness's own Python. Their tools are set to 'Ask first' by default; change that in Settings → Tools.",
+  "servers": {
+    "text-tools": {
+      "command": "python",
+      "args": [
+        "examples/demo_mcp_server.py"
+      ]
+    }
+  }
+}

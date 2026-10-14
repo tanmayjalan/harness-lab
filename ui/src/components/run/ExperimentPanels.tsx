@@ -1,0 +1,156 @@
+// While a conversation follows an experiment, three small panels, each where the eye is at that
+// moment: a one-line header at the top; the guess and "where to look" just above the message box
+// (before you send and while it runs); and what it showed, right under the answer.
+import { Callout, chipClass, IconButton, RadioRow } from '../ui'
+import { FlaskConical, Lightbulb, Undo2, X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { cannotShow, experimentDone, findExperiment, type Experiment } from '../../learn/experiments'
+import { putBack } from '../../learn/setup'
+import { useServer } from '../../store/server'
+import { useSession } from '../../store/session'
+import { useCurrentProvider } from './EmptyState'
+import type { Run, RunModel } from '../../model/derive'
+import { usePrefs, useUi } from '../../store/ui'
+import { cn } from '../../lib/cn'
+import { askThenPick } from './EmptyState'
+
+// The run sent for the experiment: its message, the newest if it was sent more than once
+export function experimentRun(model: RunModel, x: Experiment): Run | null {
+  for (let i = model.runs.length - 1; i >= 0; i--) if (model.runs[i].text.trim() === x.message.trim()) return model.runs[i]
+  return null
+}
+
+const finishedRun = (run: Run | null): run is Run => !!run && run.outcome !== 'running'
+
+function useExperiment(model: RunModel) {
+  const x = findExperiment(useUi((s) => s.experimentId))
+  const run = x ? experimentRun(model, x) : null
+  return { x, run, latest: !!run && run === model.runs[model.runs.length - 1] }
+}
+
+function Result({ x, model, run, guess }: { x: Experiment; model: RunModel; run: Run; guess: string | null }) {
+  if (!x.predict) return null
+  const actual = x.predict.actual(model, run)
+  return (
+    <>{guess ? <>You guessed <b>{guess}</b>; it was <b>{actual}</b>.{guess === actual ? ' Right!' : ''}</> : <>It was <b>{actual}</b>.</>}</>
+  )
+}
+
+export function ExperimentHeader({ model }: { model: RunModel }) {
+  const { x, run, latest } = useExperiment(model)
+  const guess = useUi((s) => s.guess)
+  const provider = useCurrentProvider()
+  const finished = finishedRun(run)
+  const done = !!x && finished && experimentDone(x, run, provider)
+  useEffect(() => {
+    if (x && done) usePrefs.getState().markExperimentDone(x.id)
+  }, [x, done])
+  if (!x) return null
+  return (
+    <Callout tone="info" data-testid="experiment-header" className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5">
+      <FlaskConical className="size-4 shrink-0 text-accent" aria-hidden />
+      <b>Experiment: {x.title}</b>
+      {finished && !latest && x.predict && <span className="text-muted">· <Result x={x} model={model} run={run} guess={guess} /></span>}
+      {cannotShow(x, provider) && <span className="text-xs text-warn">Needs {x.needs} to show anything.</span>}
+      <IconButton size="sm" label="Close this experiment" tip="Close this experiment (any settings it changed stay until you undo them)"
+        onClick={() => useUi.getState().setExperiment(null)}
+        className="-my-1 ml-auto text-muted hover:bg-panel hover:text-fg"><X className="size-3.5" /></IconButton>
+    </Callout>
+  )
+}
+
+// Above the message box: guess first, and where to look while it runs
+export function ExperimentNow({ model }: { model: RunModel }) {
+  const { x, run } = useExperiment(model)
+  const guess = useUi((s) => s.guess)
+  const first = useRef<HTMLDivElement>(null)
+  const asking = !!x?.predict && !run
+  // Take focus once, after the message box has taken it for the draft, so the guess comes first
+  useEffect(() => {
+    if (!asking || useUi.getState().guess) return
+    const id = requestAnimationFrame(() => first.current?.querySelector<HTMLElement>('button')?.focus())
+    return () => cancelAnimationFrame(id)
+  }, [asking, x?.id])
+  if (!x || finishedRun(run)) return null
+  return (
+    <Callout tone="info" className="mb-2 space-y-1.5">
+      {asking && x.predict && (
+        <div data-testid="experiment-guess" className="space-y-1">
+          <p className="font-medium">Before you send, guess: {x.predict.question}</p>
+          <div ref={first}>
+            <RadioRow label="Your guess" value={guess} options={x.predict.options.map((o) => [o, o])}
+              className="gap-1.5 border-0 p-0"
+              itemClass={(_, on) => chipClass({ selected: on, interactive: true })}
+              onChange={(o) => { useUi.getState().setGuess(o); document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus() }} />
+          </div>
+        </div>
+      )}
+      {run && guess && <p className="text-xs text-muted">Your guess: <b>{guess}</b></p>}
+      <p><span className="font-medium">Look at:</span> {x.lookAt}</p>
+    </Callout>
+  )
+}
+
+// Under the answer: the guess checked, what it showed, what to try next
+export function ExperimentReveal({ model }: { model: RunModel }) {
+  const { x, run, latest } = useExperiment(model)
+  const guess = useUi((s) => s.guess)
+  if (!x || !latest || !finishedRun(run)) return null
+  return (
+    <Callout tone="info" data-testid="experiment-reveal" className="mt-4 space-y-1.5">
+      <div className="flex items-center gap-1.5 font-medium">
+        <FlaskConical className="size-4 shrink-0 text-accent" aria-hidden /> {x.title}: what happened
+      </div>
+      {x.predict && (
+        <p className={cn('rounded-md px-2 py-1', guess ? (guess === x.predict.actual(model, run) ? 'bg-ok-soft' : 'bg-warn-soft') : 'bg-panel/70')}>
+          {run.index > 1 && <b>Message {run.index}: </b>}<Result x={x} model={model} run={run} guess={guess} />{' '}
+          <span className="text-muted">{x.predict.why}</span>
+        </p>
+      )}
+      <p className="flex gap-1.5"><Lightbulb className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
+        <span><span className="font-medium">What it showed:</span> {x.takeaway}</span></p>
+      <p><span className="font-medium">Try next:</span> <TryNext x={x} /></p>
+    </Callout>
+  )
+}
+
+// The suggestion, with its quoted message as a button that puts it in the message box
+function TryNext({ x }: { x: Experiment }) {
+  const kept = useServer((s) => s.settings?.apply === 'conversation')
+  if (kept && x.tryNextKept) return <>{x.tryNextKept}</>
+  const quoted = x.tryMessage ? `"${x.tryMessage}"` : ''
+  const at = quoted ? x.tryNext.indexOf(quoted) : -1
+  if (at < 0) return <>{x.tryNext}</>
+  return (
+    <>
+      {x.tryNext.slice(0, at)}
+      <button type="button" title="Put this in the message box" onClick={() => void askThenPick({ ...x, message: x.tryMessage! }, undefined, { fillOnly: true })}
+        className="rounded border border-accent/40 bg-panel px-1.5 py-0.5 text-accent hover:border-accent">
+        {x.tryMessage}
+      </button>
+      {x.tryNext.slice(at + quoted.length)}
+    </>
+  )
+}
+
+// Above the message box, in every conversation, while an experiment's changes are still on
+export function ExperimentChanges() {
+  const before = usePrefs((s) => s.experimentBefore)
+  const running = useSession((s) => s.running)
+  if (!before) return null
+  return (
+    <Callout tone="warn" size="sm" data-testid="experiment-changes" className="mb-2 flex items-center gap-2">
+      <FlaskConical className="size-3.5 shrink-0 text-warn" aria-hidden />
+      <span className="min-w-0 flex-1">Experiment changed: {before.changes.join(', ')}</span>
+      <span className="flex shrink-0 flex-col items-end gap-0.5">
+        <button type="button" onClick={() => void putBack()} disabled={running}
+          title={running ? 'Available when the current reply finishes' : 'Put back what the experiment changed'}
+          className="inline-flex shrink-0 items-center gap-1 rounded border border-line bg-panel px-2 py-0.5 text-fg focus-ring hover:border-muted disabled:opacity-50">
+          <Undo2 className="size-3.5" aria-hidden /> Undo
+        </button>
+        {/* F373: the reason in words (a disabled button rarely shows its title) */}
+        {running && <span className="text-2xs text-muted">Available when the reply finishes</span>}
+      </span>
+    </Callout>
+  )
+}
