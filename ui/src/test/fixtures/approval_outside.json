@@ -1,0 +1,408 @@
+[
+ {
+  "seq": 0,
+  "kind": "user",
+  "time": 1791901988.745585,
+  "msg": 1,
+  "text": "Read that file outside"
+ },
+ {
+  "seq": 1,
+  "kind": "request",
+  "time": 1791901988.7491632,
+  "msg": 1,
+  "turn": 1,
+  "max_turns": 20,
+  "messages": [
+   {
+    "role": "user",
+    "content": "Read that file outside"
+   }
+  ],
+  "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+  "max_tokens": 16000,
+  "thinking": null,
+  "output_config": null,
+  "cache": false,
+  "provider": "DeepSeek",
+  "model": "deepseek-flash",
+  "facts": 0,
+  "edited": [],
+  "trimmed": null,
+  "start_changed": false,
+  "hooks": {
+   "file": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\no_hooks.py",
+   "functions": [],
+   "problem": null
+  },
+  "tools": [
+   {
+    "name": "list_files",
+    "description": "List the files and folders inside a folder.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "read_file",
+    "description": "Read a text file and return its contents.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "write_file",
+    "description": "Create or overwrite a text file.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "search_files",
+    "description": "Search the text files in the workspace for words, and get back the best-matching files with their matching lines. Use it to find which file holds something before reading it (e.g. a policy in handbook/), instead of reading every file.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "submit_expense",
+    "description": "File an expense in the expenses system. Fill every field exactly in the shape given: an ISO date, a positive amount, a currency code and a category from the lists.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_weather",
+    "description": "The real current weather for a city, in Celsius (live from Open-Meteo).",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "convert_temperature",
+    "description": "Convert a temperature between celsius, fahrenheit and kelvin.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "calculate",
+    "description": "Work out an arithmetic expression exactly. Use this instead of doing maths in your head. Supports + - * / // % ** and brackets, e.g. (2450 * 17) / 100.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_current_time",
+    "description": "The current date and time in a time zone.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "roll_dice",
+    "description": "Roll dice and return each roll and the total.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "remember_fact",
+    "description": "Save a lasting fact or preference about the user (for example their name, preferred units or how they like answers) so it is shared in every future conversation. Use it when the user tells you something about themselves that will still be true later, not for one-off details. Depending on the user's settings, they may be asked to approve the save first.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "delegate",
+    "description": "Hand a self-contained job to a helper agent. The helper starts a fresh conversation of its own, with read-only tools (list and read files, calculator, weather, time, dice), does the work, and returns only a short report, so the details don't fill up this conversation. Use it for jobs that need a lot of reading or many lookups, e.g. 'read these 5 files and summarise what each does'. Give a clear task and say what the report should contain.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "update_plan",
+    "description": "Write or update your step-by-step plan for a task that needs 3 or more steps. Send the WHOLE list every time, each step with a status: pending, in_progress (only one at a time) or done. Make the plan before you start, and update it as you finish each step. The user sees it live. Skip it for simple questions.",
+    "source": "built in",
+    "permission": "allow"
+   }
+  ],
+  "config": {
+   "provider": "deepseek",
+   "label": "DeepSeek",
+   "model": "deepseek-flash",
+   "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+   "system_edited": false,
+   "descriptions": [],
+   "permissions": {},
+   "trim": null,
+   "compact": null,
+   "thinking": null,
+   "cache": null,
+   "apply": "message",
+   "limits": null,
+   "skills": null,
+   "faults": null,
+   "tools_at_once": null,
+   "workflow": null,
+   "run_code": null,
+   "extra_tools": null,
+   "facts_shared": 0,
+   "edited": []
+  }
+ },
+ {
+  "seq": 2,
+  "kind": "response",
+  "time": 1791901988.7597094,
+  "msg": 1,
+  "turn": 1,
+  "stop_reason": "tool_use",
+  "content": [
+   {
+    "id": "r1",
+    "input": {
+     "path": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\elsewhere.txt"
+    },
+    "name": "read_file",
+    "type": "tool_use"
+   }
+  ],
+  "usage": {
+   "cache_read_input_tokens": 0,
+   "input_tokens": 1200,
+   "output_tokens": 80
+  },
+  "cost": 0.000456
+ },
+ {
+  "seq": 3,
+  "kind": "tool_call",
+  "time": 1791901988.7607052,
+  "msg": 1,
+  "id": "r1",
+  "name": "read_file",
+  "input": {
+   "path": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\elsewhere.txt"
+  },
+  "permission": "ask",
+  "outside": true,
+  "source": "built in"
+ },
+ {
+  "seq": 4,
+  "kind": "approval",
+  "time": 1791901988.7622807,
+  "msg": 1,
+  "id": "e998e35cdd7d",
+  "prompt": "The model wants to read the file C:\\Users\\user\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\elsewhere.txt. That is OUTSIDE the workspace (C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\workspace). Allow? [y/N]",
+  "tool": "read_file",
+  "input": {
+   "path": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\elsewhere.txt"
+  },
+  "path": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\elsewhere.txt",
+  "content": "",
+  "outside": true,
+  "setting": "allow",
+  "where": "C:\\Users\\user\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\elsewhere.txt"
+ },
+ {
+  "seq": 5,
+  "kind": "decision",
+  "time": 1791901988.7667253,
+  "msg": 1,
+  "id": "e998e35cdd7d",
+  "allowed": true
+ },
+ {
+  "seq": 6,
+  "kind": "tool_result",
+  "time": 1791901988.7675285,
+  "msg": 1,
+  "result": {
+   "type": "tool_result",
+   "tool_use_id": "r1",
+   "content": "secret plans"
+  },
+  "outcome": "ran"
+ },
+ {
+  "seq": 7,
+  "kind": "request",
+  "time": 1791901988.7675815,
+  "msg": 1,
+  "turn": 2,
+  "max_turns": 20,
+  "messages": [
+   {
+    "role": "user",
+    "content": "Read that file outside"
+   },
+   {
+    "role": "assistant",
+    "content": [
+     {
+      "id": "r1",
+      "input": {
+       "path": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\elsewhere.txt"
+      },
+      "name": "read_file",
+      "type": "tool_use"
+     }
+    ]
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "r1",
+      "content": "secret plans"
+     }
+    ]
+   }
+  ],
+  "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+  "max_tokens": 16000,
+  "thinking": null,
+  "output_config": null,
+  "cache": false,
+  "provider": "DeepSeek",
+  "model": "deepseek-flash",
+  "facts": 0,
+  "edited": [],
+  "trimmed": null,
+  "start_changed": false,
+  "hooks": {
+   "file": "C:\\Users\\USER\\AppData\\Local\\Temp\\harness-fixtures-7jrvawdw\\no_hooks.py",
+   "functions": [],
+   "problem": null
+  },
+  "tools": [
+   {
+    "name": "list_files",
+    "description": "List the files and folders inside a folder.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "read_file",
+    "description": "Read a text file and return its contents.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "write_file",
+    "description": "Create or overwrite a text file.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "search_files",
+    "description": "Search the text files in the workspace for words, and get back the best-matching files with their matching lines. Use it to find which file holds something before reading it (e.g. a policy in handbook/), instead of reading every file.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "submit_expense",
+    "description": "File an expense in the expenses system. Fill every field exactly in the shape given: an ISO date, a positive amount, a currency code and a category from the lists.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_weather",
+    "description": "The real current weather for a city, in Celsius (live from Open-Meteo).",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "convert_temperature",
+    "description": "Convert a temperature between celsius, fahrenheit and kelvin.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "calculate",
+    "description": "Work out an arithmetic expression exactly. Use this instead of doing maths in your head. Supports + - * / // % ** and brackets, e.g. (2450 * 17) / 100.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "get_current_time",
+    "description": "The current date and time in a time zone.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "roll_dice",
+    "description": "Roll dice and return each roll and the total.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "remember_fact",
+    "description": "Save a lasting fact or preference about the user (for example their name, preferred units or how they like answers) so it is shared in every future conversation. Use it when the user tells you something about themselves that will still be true later, not for one-off details. Depending on the user's settings, they may be asked to approve the save first.",
+    "source": "built in",
+    "permission": "ask"
+   },
+   {
+    "name": "delegate",
+    "description": "Hand a self-contained job to a helper agent. The helper starts a fresh conversation of its own, with read-only tools (list and read files, calculator, weather, time, dice), does the work, and returns only a short report, so the details don't fill up this conversation. Use it for jobs that need a lot of reading or many lookups, e.g. 'read these 5 files and summarise what each does'. Give a clear task and say what the report should contain.",
+    "source": "built in",
+    "permission": "allow"
+   },
+   {
+    "name": "update_plan",
+    "description": "Write or update your step-by-step plan for a task that needs 3 or more steps. Send the WHOLE list every time, each step with a status: pending, in_progress (only one at a time) or done. Make the plan before you start, and update it as you finish each step. The user sees it live. Skip it for simple questions.",
+    "source": "built in",
+    "permission": "allow"
+   }
+  ],
+  "config": {
+   "provider": "deepseek",
+   "label": "DeepSeek",
+   "model": "deepseek-flash",
+   "system": "You help the user with the files in their workspace folder and with small everyday tasks. Look at files with your tools before answering questions about them, and use a tool instead of guessing whenever one fits (for example, calculate for arithmetic). If the user tells you a lasting fact or preference about themselves, offer to remember it with remember_fact. For jobs that need a lot of reading or many lookups, use delegate so the details don't fill this conversation. For tasks with 3 or more steps, first write a plan with update_plan, then keep it updated as you go.",
+   "system_edited": false,
+   "descriptions": [],
+   "permissions": {},
+   "trim": null,
+   "compact": null,
+   "thinking": null,
+   "cache": null,
+   "apply": "message",
+   "limits": null,
+   "skills": null,
+   "faults": null,
+   "tools_at_once": null,
+   "workflow": null,
+   "run_code": null,
+   "extra_tools": null,
+   "facts_shared": 0,
+   "edited": []
+  }
+ },
+ {
+  "seq": 8,
+  "kind": "response",
+  "time": 1791901988.778071,
+  "msg": 1,
+  "turn": 2,
+  "stop_reason": "end_turn",
+  "content": [
+   {
+    "text": "It says: secret plans.",
+    "type": "text"
+   }
+  ],
+  "usage": {
+   "cache_read_input_tokens": 0,
+   "input_tokens": 1200,
+   "output_tokens": 80
+  },
+  "cost": 0.000456
+ },
+ {
+  "seq": 9,
+  "kind": "answer",
+  "time": 1791901988.7780864,
+  "msg": 1,
+  "text": "It says: secret plans.",
+  "provider": "DeepSeek",
+  "model": "deepseek-flash"
+ },
+ {
+  "seq": 10,
+  "kind": "done",
+  "time": 1791901988.7802148,
+  "msg": 1
+ }
+]

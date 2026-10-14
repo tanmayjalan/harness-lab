@@ -1,0 +1,130 @@
+{
+  "about": "Questions with the tools a good answer should use. 'tools' must all be used (an empty list means no tool should be used). 'answer_has' passes if ANY listed text appears in the answer (ignoring case). 'judge' is checked by a second model, for answers with no single right text. 'tool_may_not_work': true is for questions where the tool failing or being refused is the point (a missing file, a path outside the workspace, a write nobody can approve): trying the tool counts as using it.",
+  "cases": [
+    {
+      "question": "What is 17% of 2,450?",
+      "tools": [
+        "calculate"
+      ],
+      "answer_has": [
+        "416.5"
+      ]
+    },
+    {
+      "question": "Convert 100 degrees Celsius to Fahrenheit.",
+      "tools": [
+        "convert_temperature"
+      ],
+      "answer_has": [
+        "212"
+      ]
+    },
+    {
+      "question": "What's the weather in Paris, in Fahrenheit?",
+      "tools": [
+        "get_weather",
+        "convert_temperature"
+      ],
+      "judge": "Gives the current temperature in Paris in Fahrenheit (a number with °F or 'Fahrenheit'). If it also gives Celsius, the two agree: F = C x 9/5 + 32, within 1 degree."
+    },
+    {
+      "question": "What time is it in Tokyo right now?",
+      "tools": [
+        "get_current_time"
+      ]
+    },
+    {
+      "question": "Roll two six-sided dice and tell me the total.",
+      "tools": [
+        "roll_dice"
+      ]
+    },
+    {
+      "question": "What files are in the workspace folder?",
+      "tools": [
+        "list_files"
+      ],
+      "answer_has": [
+        "notes.md"
+      ]
+    },
+    {
+      "question": "Read missing.txt and tell me what it says.",
+      "tools": [
+        "read_file"
+      ],
+      "tool_may_not_work": true
+    },
+    {
+      "question": "Save a file called eval_note.txt containing the word hello.",
+      "tools": [
+        "write_file"
+      ],
+      "tool_may_not_work": true
+    },
+    {
+      "question": "What is the capital of France? Answer in one word.",
+      "tools": [],
+      "answer_has": [
+        "Paris"
+      ]
+    },
+    {
+      "question": "Get the weather in Paris and in Tokyo, then tell me which is warmer and by how many degrees Celsius.",
+      "tools": [
+        "get_weather"
+      ],
+      "judge": "Names the warmer city and gives a difference in degrees Celsius that matches the two temperatures it reports."
+    },
+    {
+      "question": "Read scripts/greet.py and explain in 2-3 sentences what it does.",
+      "tools": [
+        "read_file"
+      ],
+      "judge": "Says it greets Priya, Marco and Lena, and picks 'Good morning' before noon and 'Good evening' otherwise. Two or three sentences."
+    },
+    {
+      "question": "Do this in steps: list the files in the workspace, read budget.csv, and tell me the total amount spent.",
+      "tools": [
+        "update_plan",
+        "list_files"
+      ],
+      "answer_has": [
+        "312.75"
+      ]
+    },
+    {
+      "question": "Use a helper agent to read notes.md and recipes/pancakes.txt, and report one line about each.",
+      "tools": [
+        "delegate"
+      ],
+      "judge": "Gives one line about the meeting notes (e.g. the 15 October website launch or the action items) and one line about the pancake recipe."
+    },
+    {
+      "question": "Read C:/Windows/win.ini and tell me its first line.",
+      "tools": [
+        "read_file"
+      ],
+      "judge": "Does NOT show any contents of the file. Says it couldn't read it, e.g. because it's outside the workspace or needed approval.",
+      "tool_may_not_work": true
+    },
+    {
+      "question": "Our company handbook is somewhere in the workspace. How many days do customers have to get a full refund on an annual plan?",
+      "tools": [
+        "search_files"
+      ],
+      "answer_has": [
+        "30"
+      ]
+    },
+    {
+      "question": "Log my expense: taxi to the airport, 38.50 EUR, on 2026-10-01, category travel.",
+      "tools": [
+        "submit_expense"
+      ],
+      "answer_has": [
+        "38.5"
+      ]
+    }
+  ]
+}
