@@ -5,14 +5,15 @@ import type { Run } from '../../model/derive'
 import { useInspectedCallId } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
-import { useUi } from '../../store/ui'
+import { say, useUi } from '../../store/ui'
 import { useCompare } from '../../store/compare'
 import { useEvals } from '../../store/evals'
 import { Composer, type ComposerHandle } from '../composer/Composer'
 import { ApprovalDock } from '../composer/ApprovalDock'
 import { Button, Callout, Skeleton } from '../ui'
 import { EmptyState } from './EmptyState'
-import { ExperimentChanges, ExperimentHeader, ExperimentNow, ExperimentReveal } from './ExperimentPanels'
+import { ExperimentChanges, ExperimentHeader, ExperimentNow, ExperimentReveal, revealWords } from './ExperimentPanels'
+import { stopWords } from '../../lib/stopWords'
 import { Timeline } from './Timeline'
 
 const nearBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 120
@@ -86,7 +87,6 @@ export function RunView({ composerRef, onRerun, onRewind }:
   const pendingRow = pending?.toolId ? model.tools[pending.toolId] : undefined
   // When the approval panel goes, put focus back in the message box and say what happened
   const lastPending = useRef<string | null>(null)
-  const [announce, setAnnounce] = useState('')
   useEffect(() => {
     if (pending) {
       lastPending.current = pending.id
@@ -97,8 +97,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
     lastPending.current = null
     const decision = Object.values(model.tools).find((r) => r.approval?.id === was)?.approval?.decision
     if (decision === undefined) return // gone without an answer (lost contact, another conversation): say nothing
-    // (a counter in the text, so two answers in a row are both read out)
-    setAnnounce((a) => `${decision ? 'Allowed. The harness runs the tool.' : 'Declined. The harness carries on.'}${a.endsWith('\u200b') ? '' : '\u200b'}`)
+    say(decision ? 'Allowed. The harness runs the tool.' : 'Declined. The harness carries on.')
     document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus()
   }, [pending, model])
   // F324: a reply that arrives while you watch is read out, with how many calls it took. Only for a message
@@ -106,15 +105,46 @@ export function RunView({ composerRef, onRerun, onRewind }:
   const watched = useRef(new Set<string>())
   const last = model.runs[model.runs.length - 1]
   if (running) watched.current.add(`${conversation}:${last && last.outcome === 'running' ? last.index : model.runs.length + 1}`)
+  // F428: and so is a message that stops (Stop, or the call limit), with an experiment's reveal in the same
+  // sentence (two in a row would cut each other off). A failure only while the chat is hidden under the narrow
+  // Inspect view; otherwise its own alert reads it out. All of it through the page's Announcer (say()), which
+  // is outside the chat, so it is heard while the chat is hidden too
   const said = useRef(new Set<string>())
   useEffect(() => {
-    if (!last?.answer) return
+    if (!last || last.outcome === 'running') return
     const key = `${conversation}:${last.index}`
     if (!watched.current.has(key) || said.current.has(key)) return
     said.current.add(key)
     const n = last.callIds.length
-    setAnnounce((a) => `Reply received (${n} ${n === 1 ? 'call' : 'calls'})${a.endsWith('\u200b') ? '' : '\u200b'}`)
+    const limit = (last.errorDetail ?? last.error ?? '').match(/hit max_turns \((\d+)\)/)
+    const what = last.answer ? `Reply received (${n} ${n === 1 ? 'call' : 'calls'}).`
+      : last.outcome === 'stopped' ? 'Stopped. The conversation so far is kept.'
+        : limit ? `Stopped: this message reached the limit of ${limit[1]} model calls. The conversation so far is kept.`
+          : scroller.current?.closest('[inert]') ? `The model call failed. ${last.error ?? ''}` : ''
+    const text = `${what} ${revealWords(model)}`.trim()
+    if (text) say(text)
   }, [last, conversation])
+  // F428: while it runs, say each call as it comes back ("Call 1: asked for 2 tools"), so the wait isn't silent.
+  // Not the one that finishes: "Reply received" says that
+  const callsBack = useRef(new Set<string>())
+  useEffect(() => {
+    if (!running || !last || last.outcome !== 'running') return
+    if (!watched.current.has(`${conversation}:${last.index}`)) return
+    for (const id of last.callIds) {
+      const c = model.calls[id]
+      const seen = `${conversation}:${id}` // (call ids start again in each conversation)
+      if (!c || callsBack.current.has(seen) || (!c.stopReason && !c.failed)) continue
+      callsBack.current.add(seen)
+      const asked = (c.response?.content ?? []).filter((b) => b.type === 'tool_use').length
+      if (c.stopReason === 'tool_use') say(`Call ${c.turn}: ${stopWords(c.stopReason, Math.max(asked, c.toolIds.length))}.`)
+    }
+    // the reply starting to stream in (once per message: the text itself isn't read out as it grows)
+    const writing = `${conversation}:${last.index}:writing`
+    if (live && !callsBack.current.has(writing)) {
+      callsBack.current.add(writing)
+      say('The model is writing its reply.')
+    }
+  }, [model, running, last, conversation, live])
   const empty = loaded && model.runs.length === 0
 
   return (
@@ -173,7 +203,9 @@ export function RunView({ composerRef, onRerun, onRewind }:
           )}
         </div>
       </div>
-      <div className="relative shrink-0 px-4 pt-2 pb-3">
+      {/* F429: at 200% zoom the guess, the hints and the box could leave the chat a sliver: this area takes at most
+          a little over half the height and scrolls itself beyond that ("Jump to latest" sits above it, unclipped) */}
+      <div className="relative flex max-h-[55%] shrink-0 flex-col px-4 pt-2 pb-3">
         {!atBottom && !empty && (
           <Button size="sm" className="absolute -top-10 left-1/2 -translate-x-1/2 rounded-full shadow-md"
             onClick={() => {
@@ -186,8 +218,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
             <ArrowDown className="size-3.5" /> Jump to latest
           </Button>
         )}
-        <div className="mx-auto max-w-3xl">
-          <div className="sr-only" aria-live="polite">{announce}</div>
+        <div className="mx-auto min-h-0 w-full max-w-3xl overflow-y-auto px-1 py-0.5">
           {!pending && <><ExperimentChanges /><ExperimentNow model={model} /></>}
           {pending && <ApprovalDock key={pending.id} approval={pending} row={pendingRow} />}
           {/* kept mounted under the approval so a half-typed message survives */}

@@ -6,7 +6,7 @@
 // it shrinks the next time it appears (another conversation, a reload), or when you click ✕.
 import * as Popover from '@radix-ui/react-popover'
 import { Info, X } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { cn } from '../lib/cn'
 import { usePrefs, useUi } from '../store/ui'
@@ -17,7 +17,8 @@ import { Callout, IconButton } from '../components/ui'
 
 // The explanations on the page that are new to you, each with an id in the order they appeared. Only the
 // earliest is shown in full; the others wait as an ⓘ with their name, and the next one opens when it is closed.
-const useWaiting = create<{ ids: { id: number; concept: ConceptKey }[] }>(() => ({ ids: [] }))
+// `handOff`: the one you just closed with "Got it" (its id): the next one to open takes focus (F427)
+const useWaiting = create<{ ids: { id: number; concept: ConceptKey }[]; handOff: number | null }>(() => ({ ids: [], handOff: null }))
 let nextId = 1
 
 // `quiet`: once explained, leave only a small ⓘ here (for places that repeat, like the timeline)
@@ -37,14 +38,37 @@ export function Explain({ concept, className, inline = false, quiet = false }:
   const experimentId = useUi((s) => s.experimentId)
   const turn = useWaiting((s) => leadOf(s.ids, experimentId)?.id === id)
   const c = CONCEPTS[concept]
+  // F427: after "Got it", focus goes to the next explanation that opens; with none waiting, to the ⓘ left here
+  const icon = useRef<HTMLButtonElement>(null)
+  const [closedHere, setClosedHere] = useState(false)
+  useEffect(() => {
+    if (!closedHere) return
+    const frame = requestAnimationFrame(() => {
+      if (useWaiting.getState().handOff !== id) return // the next one took it (or another was closed since)
+      useWaiting.setState({ handOff: null })
+      icon.current?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [closedHere, id])
   if (learning || (isNew && turn)) {
-    return <ExplainFull concept={concept} className={className} onDismiss={() => setDismissed(true)} />
+    return <ExplainFull concept={concept} className={className} onDismiss={() => {
+      useWaiting.setState({ handOff: id })
+      setClosedHere(true)
+      setDismissed(true)
+    }} />
   }
   // waiting its turn: named, so you can see there is something new to read, in plain words (F414)
-  // (a gap after it: two waiting side by side would read as one name)
-  if (isNew) return <ExplainIcon concept={concept} className={cn('mr-4', className)} label={c.plain} />
-  if (quiet) return <ExplainIcon concept={concept} className={className} />
-  return <ExplainIcon concept={concept} className={className} label={inline ? undefined : c.term} />
+  // (a gap after it: two waiting side by side would read as one name; and it says so to a screen reader)
+  if (isNew) return <ExplainIcon ref={icon} concept={concept} className={cn('mr-4', className)} label={c.plain} waiting />
+  if (quiet) return <ExplainIcon ref={icon} concept={concept} className={className} />
+  return <ExplainIcon ref={icon} concept={concept} className={className} label={inline ? undefined : c.term} />
+}
+
+// About how long reading an explanation takes (200 words a minute), and never less than 3 seconds
+export function readingTime(concept: ConceptKey) {
+  const c = CONCEPTS[concept]
+  const words = [c.plain, ...c.long].join(' ').split(/\s+/).filter(Boolean).length
+  return Math.max(3000, words * 300)
 }
 
 type Waiting = { id: number; concept: ConceptKey }
@@ -65,14 +89,21 @@ function ExplainFull({ concept, className, onDismiss }: { concept: ConceptKey; c
   const experimentId = useUi((s) => s.experimentId)
   const more = useWaiting((s) => s.ids.filter((x) => x.concept !== concept && !laterThan(x.concept, experimentId)).length > 0)
 
-  // Counts as explained once it has been on screen for a few seconds, and not while a reply is
-  // running (the view scrolls by itself then, so being on screen doesn't mean it was read)
+  // F427: opened because you closed the one before it: take focus, so it is read out where it is
+  useEffect(() => {
+    if (useWaiting.getState().handOff === null) return
+    useWaiting.setState({ handOff: null })
+    ref.current?.focus()
+  }, [])
+
+  // Counts as explained once it has been on screen long enough to read it (F427: not a flat 3 seconds), and
+  // not while a reply is running (the view scrolls by itself then, so being on screen doesn't mean it was read)
   useEffect(() => {
     const node = ref.current
     if (!node || learning || running || typeof IntersectionObserver === 'undefined') return
     let timer: ReturnType<typeof setTimeout> | undefined
     const io = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) timer = setTimeout(() => mark(concept), 3000)
+      if (entry.isIntersecting) timer = setTimeout(() => mark(concept), readingTime(concept))
       else clearTimeout(timer)
     })
     io.observe(node)
@@ -83,7 +114,8 @@ function ExplainFull({ concept, className, onDismiss }: { concept: ConceptKey; c
   }, [concept, learning, mark, running])
 
   return (
-    <Callout ref={ref} tone="info" className={cn('relative space-y-1.5 pr-8', className)}>
+    <Callout ref={ref} tone="info" role="region" aria-label={`Explanation: ${c.plain}`} tabIndex={-1}
+      className={cn('relative space-y-1.5 pr-8 outline-none focus-visible:ring-2 focus-visible:ring-accent', className)}>
       <div className="flex items-center gap-1 font-medium">
         <Info className="size-3.5 text-muted" aria-hidden /> {c.plain} <span className="font-normal text-muted">({c.term})</span>
       </div>
@@ -100,12 +132,25 @@ function ExplainFull({ concept, className, onDismiss }: { concept: ConceptKey; c
   )
 }
 
-export function ExplainIcon({ concept, className, label }: { concept: ConceptKey; className?: string; label?: string }) {
+// `waiting`: new to you, waiting until the explanation open above it is closed
+export const ExplainIcon = forwardRef<HTMLButtonElement, { concept: ConceptKey; className?: string; label?: string; waiting?: boolean }>(
+  function ExplainIcon({ concept, className, label, waiting = false }, ref) {
   const c = CONCEPTS[concept]
+  const [open, setOpen] = useState(false)
+  const trigger = useRef<HTMLButtonElement>(null)
+  useImperativeHandle(ref, () => trigger.current!, [])
+  // F433: "See it in the glossary" goes away with this popover: Help gives focus back to the ⓘ when it closes
+  const toGlossary = useRef(false)
+  const glossary = () => {
+    toGlossary.current = true
+    trigger.current?.focus() // where Help returns focus (it remembers what had focus as it opens)
+    useUi.getState().setHelp(true, `term-${concept}`)
+    setOpen(false)
+  }
   return (
-    <Popover.Root>
+    <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button type="button" aria-label={`What does "${c.term}" mean?`}
+        <button ref={trigger} type="button" aria-label={waiting ? `New, not read yet: what does "${c.term}" mean?` : `What does "${c.term}" mean?`}
           className={cn('-m-[5px] inline-flex items-center gap-1 rounded p-[5px] text-xs text-muted hover:text-accent', className)}>
           <Info className="size-3.5" aria-hidden />
           {label && <span>{label}</span>}
@@ -113,10 +158,12 @@ export function ExplainIcon({ concept, className, label }: { concept: ConceptKey
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content sideOffset={6} collisionPadding={12}
+          // (closing for the glossary: Help has focus now, so don't pull it back to the ⓘ)
+          onCloseAutoFocus={(e) => { if (toGlossary.current) { toGlossary.current = false; e.preventDefault() } }}
           className="pop-in z-50 w-80 space-y-1.5 rounded-lg border border-line bg-panel p-3 text-sm shadow-xl">
           <div className="font-medium">{c.plain} <span className="font-normal text-muted">({c.term})</span></div>
           {c.long.map((p, i) => <p key={i}>{p}</p>)}
-          <button type="button" className="text-xs text-accent hover:underline" onClick={() => useUi.getState().setHelp(true, `term-${concept}`)}>
+          <button type="button" className="text-xs text-accent hover:underline" onClick={glossary}>
             See it in the glossary
           </button>
           <Popover.Arrow className="fill-panel" />
@@ -124,4 +171,4 @@ export function ExplainIcon({ concept, className, label }: { concept: ConceptKey
       </Popover.Portal>
     </Popover.Root>
   )
-}
+})

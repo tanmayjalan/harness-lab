@@ -287,7 +287,7 @@ describe('F413, F414, F419: words a beginner can read', () => {
   it('an explanation waiting its turn is named in plain words, not the API term', () => {
     render(<><Explain concept="loop" /><Explain concept="tool_use" /></>)
     expect(screen.getByText(CONCEPTS.loop.long[0])).toBeInTheDocument()
-    const waiting = screen.getByRole('button', { name: `What does "${CONCEPTS.tool_use.term}" mean?` })
+    const waiting = screen.getByRole('button', { name: `New, not read yet: what does "${CONCEPTS.tool_use.term}" mean?` })
     expect(waiting.textContent).toBe(CONCEPTS.tool_use.plain)
   })
 
