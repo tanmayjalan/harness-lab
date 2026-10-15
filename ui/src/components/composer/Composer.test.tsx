@@ -76,7 +76,8 @@ describe('Composer', () => {
     composer()
     await userEvent.setup().click(screen.getByRole('button', { name: /Mock/ }))
     expect(screen.getByRole('menuitemradio', { checked: true })).toHaveTextContent('m1')
-    expect(screen.getByRole('menuitemradio', { name: /Anthropic/ })).toHaveAttribute('aria-disabled', 'true')
+    // (anchored: the mock's item also says where its data goes, "Sent to Anthropic, …")
+    expect(screen.getByRole('menuitemradio', { name: /^Anthropic/ })).toHaveAttribute('aria-disabled', 'true')
   })
 
   // F317: the tooltip's words are also in the page for a keyboard or screen reader user
@@ -99,5 +100,42 @@ describe('the provider pill while a reply runs (F373)', () => {
     const why = screen.getByText('Switch after the reply finishes')
     expect(why.className).toMatch(/text-2xs/)
     useSession.setState({ running: false })
+  })
+})
+
+// F386: the provider menu says where your messages go
+describe('the provider menu says where data goes', () => {
+  it('names Anthropic under your Claude Code login for the mock', async () => {
+    useServer.setState({ info: { provider: 'mock', mode: 'mock', model: 'm1', providers: [
+      { name: 'mock', label: 'Mock', model: 'm1', models: ['m1'], missing_key: null, price: null },
+      { name: 'deepseek', label: 'DeepSeek', model: 'd1', models: ['d1'], missing_key: null, price: null },
+    ] } as never })
+    useSession.setState({ provider: 'mock', model: 'm1', running: false })
+    composer()
+    await userEvent.setup().click(screen.getByRole('button', { name: /Mock/ }))
+    expect(screen.getByRole('menuitemradio', { name: /Mock/ })).toHaveTextContent('Sent to Anthropic, under your Claude Code login')
+    expect(screen.getByRole('menuitemradio', { name: /DeepSeek/ })).toHaveTextContent("Sent to DeepSeek's servers")
+  })
+})
+
+// F392: a hooks file with a mistake means no hook runs: say so above the message box
+describe('a broken hooks file', () => {
+  it('shows a warning above the box, with the path from the lab folder on', () => {
+    const d = useSession.getState().derived
+    useSession.setState({ running: false, derived: { ...d, callOrder: [], calls: {} } })
+    useServer.setState({ info: { folder: 'C:/Users/ada/Harness/workspace', providers: [] } as never,
+      settings: { hooks: { file: 'C:/Users/ada/Harness/config/my_hooks.py', functions: [], problem: 'SyntaxError: invalid syntax (my_hooks.py, line 3)' } } as never })
+    composer()
+    expect(document.body.textContent).toMatch(/Your hooks file has a mistake, so no hook is running \(not even the block on secret-looking files\): SyntaxError/)
+    expect(screen.getByText('config/my_hooks.py')).toHaveAttribute('title', 'C:/Users/ada/Harness/config/my_hooks.py')
+    expect(document.body.textContent).not.toMatch(/Users/)
+    useServer.setState({ settings: null, info: null })
+  })
+
+  it('says nothing when the hooks file loaded', () => {
+    useServer.setState({ settings: { hooks: { file: 'x', functions: ['before_tool'], problem: null } } as never })
+    composer()
+    expect(document.body.textContent).not.toMatch(/hooks file has a mistake/)
+    useServer.setState({ settings: null })
   })
 })

@@ -448,7 +448,7 @@ function WaitingLine({ text, since }: { text: string; since: number }) {
   return (
     <RunningBanner text={text} startedAt={since} className="ml-3">
       {(secs) => mock && secs >= 10 && (
-        <p className="text-xs text-muted">The mock starts <code>claude -p</code> for every call and doesn't stream: 20 to 60 seconds is normal.</p>
+        <p className="text-xs text-muted">The mock starts <code>claude -p</code> for every call and doesn't stream: about 5 to 30 seconds is normal.</p>
       )}
     </RunningBanner>
   )

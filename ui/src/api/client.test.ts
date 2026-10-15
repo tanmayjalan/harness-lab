@@ -7,7 +7,7 @@ afterEach(() => vi.unstubAllGlobals())
 describe('error messages from the server', () => {
   it('a server error without its own text points at the terminal', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('oops', { status: 500 })))
-    await expect(api.chat('hi')).rejects.toThrow(/The server hit an error\. Look at the terminal window running start\.bat/)
+    await expect(api.chat('hi')).rejects.toThrow(/The server had an error\. Look at the terminal window running start\.bat/)
   })
   it("the server's own words are kept when it gives them", async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'empty message' }), { status: 400 })))

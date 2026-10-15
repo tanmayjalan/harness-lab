@@ -40,7 +40,8 @@ API key is needed.
 3. Run **`start.bat`**. The page opens at http://127.0.0.1:8000. **`stop.bat`** stops it.
 
 By default replies come from `claude -p` on your Claude Code plan (the *mock*). With an API key you can use
-the Anthropic API or DeepSeek instead: `start.bat -Provider anthropic`. See
+the Anthropic API or DeepSeek instead: `start.bat -Provider anthropic`. Or run a free model on your own
+computer with [Ollama](https://ollama.com) or [LM Studio](https://lmstudio.ai): `start.bat -Provider ollama`. See
 [Getting started](docs/getting-started.md) for every option, and
 [If something goes wrong](docs/getting-started.md#if-something-goes-wrong) if a step fails.
 
@@ -87,6 +88,7 @@ The full map, with one line per file, is in [How it's built](docs/architecture.m
 |---|---|
 | [Getting started](docs/getting-started.md) | install, start, stop, providers |
 | [A learning path](docs/learning-path.md) | the experiments, in order |
+| [Running a workshop](docs/workshop.md) | a two-hour path, the day-before checklist, resetting between demos |
 | [A tour of the page](docs/tour.md) | what each part of the page shows |
 | [How it's built](docs/architecture.md) | the code, file by file; the workflow's two loops |
 | [Safety rules](docs/safety.md) | the workspace, approvals, running code, hooks, Rewind |

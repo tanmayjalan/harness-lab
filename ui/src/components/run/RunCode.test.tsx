@@ -12,7 +12,7 @@ import { PRESETS } from '../../store/compare'
 import { useServer } from '../../store/server'
 import { usePrefs } from '../../store/ui'
 import { ApprovalDock } from '../composer/ApprovalDock'
-import { ToolsSection } from '../settings/ToolsSection'
+import { runCodeRule, ToolsSection } from '../settings/ToolsSection'
 import { changedIn, sectionOf, settingsAsChange } from '../settings/common'
 import { AccessChecks } from './AccessChecks'
 import { Timeline } from './Timeline'
@@ -87,6 +87,23 @@ describe('the setting', () => {
     unmount()
     render(<RTooltip.Provider><ToolsSection settings={{ ...settings, run_code: { enabled: true } } as Settings} /></RTooltip.Provider>)
     expect(document.body.textContent).not.toMatch(/offered only when Run code is on/)
+  })
+
+  // F391: the switch says what run_python's own rule means, and Allow on it is a warning, not the safe green
+  it("says what run_python's rule means, and marks Allow on it as a warning", () => {
+    const { unmount } = render(<RTooltip.Provider><ToolsSection settings={settings} /></RTooltip.Provider>)
+    expect(document.body.textContent).toMatch(/It asks you first, so you can read the code/)
+    unmount()
+    const allowed = { ...settings, run_code: { enabled: true }, tools: [tool('read_file'), tool('run_python', 'allow')] } as Settings
+    render(<RTooltip.Provider><ToolsSection settings={allowed} /></RTooltip.Provider>)
+    expect(document.body.textContent).toMatch(/run_python is set to Allow: code the model writes runs without asking you/)
+    expect(document.body.textContent).not.toMatch(/It asks you first/)
+    expect(document.body.textContent).toMatch(/Code the model writes runs as you, without you seeing it first/)
+    const on = screen.getByRole('group', { name: 'Permission for run_python' }).querySelector('[aria-pressed="true"]')!
+    expect(on.textContent).toBe('Allow')
+    expect(on.className).toMatch(/text-warn/)
+    expect(on.className).not.toMatch(/text-ok/)
+    expect(runCodeRule({ tools: [tool('run_python', 'block')] } as unknown as Settings)).toMatch(/set to Block/)
   })
 
   it('counts under Tools, comes back after Reset all, and an experiment can set and undo it', () => {

@@ -3,8 +3,9 @@ import { RotateCcw } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { Rule, Settings, SettingsTool } from '../../api/types'
 import { cn } from '../../lib/cn'
-import { count } from '../../lib/format'
-import { RULES } from '../../model/permission'
+import { count, shortPath } from '../../lib/format'
+import { isMcpTool, isRiskyTool, RULES } from '../../model/permission'
+import { useServer } from '../../store/server'
 import { ExplainIcon } from '../../learn/Explain'
 import { JsonTree } from '../inspector/JsonTree'
 import { Button, Callout, Disclosure, Field, IconButton, RadioRow, SectionLabel, TextArea } from '../ui'
@@ -14,8 +15,25 @@ const FOLDED = { n: 0, open: false }
 
 // ---- Tools & permissions ----
 
+// F391: what the Run code switch means depends on run_python's own rule
+export function runCodeRule(settings: Pick<Settings, 'tools'>) {
+  const rule = settings.tools.find((t) => t.name === 'run_python')?.permission
+  return rule === 'allow' ? "run_python is set to Allow: code the model writes runs without asking you, and you don't see it first."
+    : rule === 'block' ? 'run_python is set to Block, so nothing runs even with this on.'
+      : 'It asks you first, so you can read the code.'
+}
+
+// F391: Allow on a risky tool, in words: what happens without you seeing it
+export function riskyAllowNote(name: string) {
+  return name === 'run_python' ? 'Code the model writes runs as you, without you seeing it first.'
+    : name === 'remember_fact' ? 'Facts are saved and shared in every conversation without asking you.'
+      : isMcpTool(name) ? 'Another program decides what this tool does, and it runs without asking you.'
+        : ''
+}
+
 export function ToolsSection({ settings }: { settings: Settings }) {
   const [filter, setFilter] = useState('')
+  const workspace = useServer((s) => s.info?.folder)
   const groups = useMemo(() => {
     const out = new Map<string, SettingsTool[]>()
     for (const t of settings.tools) {
@@ -54,7 +72,7 @@ export function ToolsSection({ settings }: { settings: Settings }) {
             <span className="block text-xs text-muted">
               Offers the model a tool to run Python scripts it writes, from the workspace folder, for at most 10 seconds.
               This is not a sandbox: a script runs as you and can change any of your files or reach the internet.
-              It asks you first, so you can read the code.
+              {' '}{runCodeRule(settings)}
             </span>
           </span>
         </label>
@@ -62,12 +80,16 @@ export function ToolsSection({ settings }: { settings: Settings }) {
       {settings.extra_tools && <ExtraToolsSwitch setting={settings.extra_tools} />}
       {settings.hooks.functions.length > 0 && (
         <Callout tone="info" className="mb-3">
-          <b>Hooks are on</b> ({settings.hooks.functions.map((f, i) => <span key={f}>{i > 0 && ', '}<code>{f}</code></span>)}) from <code>{settings.hooks.file}</code>: they can block a call
+          <b>Hooks are on</b> ({settings.hooks.functions.map((f, i) => <span key={f}>{i > 0 && ', '}<code>{f}</code></span>)}) from{' '}
+          <code title={settings.hooks.file}>{shortPath(settings.hooks.file, workspace)}</code>: they can block a call
           before any rule here applies.
         </Callout>
       )}
       {settings.hooks.problem && (
-        <Callout tone="bad" className="mb-3">Hooks file problem: {settings.hooks.problem}</Callout>
+        <Callout tone="bad" className="mb-3">
+          Your hooks file, <code title={settings.hooks.file}>{shortPath(settings.hooks.file, workspace)}</code>, has a mistake, so no
+          hook is running: {settings.hooks.problem}
+        </Callout>
       )}
       {settings.mcp_problems.map((p) => (
         <Callout key={p} tone="warn" className="mb-3">MCP server skipped: {p}</Callout>
@@ -129,6 +151,7 @@ function ToolPermissionRow({ tool, note }: { tool: SettingsTool; note?: string }
   const countId = `desc-count-${tool.name}`
   const blankId = `desc-blank-${tool.name}`
   const permChanged = tool.permission !== tool.default_permission
+  const risky = isRiskyTool(tool.name) // Allow on it is a warning, not the safe green
   const descChanged = tool.description.trim() !== tool.default_description.trim()
   const setRule = (rule: Rule) => rule !== tool.permission && save({ permissions: { [tool.name]: rule } }, `${tool.name} is set to ${RULES[rule].label}`)
 
@@ -153,10 +176,12 @@ function ToolPermissionRow({ tool, note }: { tool: SettingsTool; note?: string }
         <RadioRow label={`Permission for ${tool.name}`} value={tool.permission} onChange={(r) => setRule(r)} describedBy={helpId}
           className="text-xs" options={(['allow', 'ask', 'block'] as Rule[]).map((r) => [r, RULES[r].label, RULES[r].help])}
           itemClass={(r, on) => cn('px-2 py-0.5', on
-            ? r === 'allow' ? 'bg-ok-soft font-medium text-ok' : r === 'ask' ? 'bg-warn-soft font-medium text-warn' : 'bg-bad-soft font-medium text-bad'
+            ? r === 'allow' ? (risky ? 'bg-warn-soft font-semibold text-warn ring-1 ring-inset ring-warn' : 'bg-ok-soft font-medium text-ok') : r === 'ask' ? 'bg-warn-soft font-medium text-warn' : 'bg-bad-soft font-medium text-bad'
             : 'text-muted hover:text-fg')} />
       </div>
-      <p id={helpId} className="mt-0.5 text-right text-xs text-muted">{RULES[tool.permission].help}</p>
+      <p id={helpId} className={cn('mt-0.5 text-right text-xs', risky && tool.permission === 'allow' ? 'font-medium text-warn' : 'text-muted')}>
+        {RULES[tool.permission].help}{risky && tool.permission === 'allow' && ` ${riskyAllowNote(tool.name)}`}
+      </p>
       {open && (
         <div className="mt-2 space-y-2">
           <div className="text-xs text-muted">

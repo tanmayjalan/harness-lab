@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useUi } from '../../store/ui'
+import { useServer } from '../../store/server'
+import type { Info, Settings } from '../../api/types'
 import type { Approval, ToolRow } from '../../model/derive'
 import { useShortcuts } from '../../lib/shortcuts'
 import { decide } from '../../store/selectors'
@@ -141,6 +143,45 @@ describe('ApprovalDock', () => {
   it('"Always allow" says paths outside the workspace will still ask', () => {
     render(<ApprovalDock approval={approval()} row={row} />)
     expect(screen.getByRole('checkbox', { name: /paths outside the workspace will still ask/ })).toBeInTheDocument()
+  })
+
+  // F390: "Always allow" is a lasting rule that unattended runs use too, and for code or an MCP tool the
+  // workspace is no limit: say so instead of "will still ask"
+  it('"Always allow" says where the rule applies, and is honest about code and MCP tools', () => {
+    const { unmount } = render(<ApprovalDock approval={approval()} row={row} />)
+    expect(screen.getByRole('checkbox', { name: /in every conversation and in Compare, Re-run and evals/ })).toBeInTheDocument()
+    unmount()
+    const code = render(<ApprovalDock approval={approval({ tool: 'run_python', input: { code: 'print(1)' } })} row={row} />)
+    const box = screen.getByRole('checkbox', { name: /Always allow/ })
+    expect(box).toHaveAccessibleName(/the code can still reach any file, not only the workspace/)
+    expect(box).not.toHaveAccessibleName(/will still ask/)
+    code.unmount()
+    render(<ApprovalDock approval={approval({ tool: 'notes__add', input: { text: 'x' } })} row={row} />)
+    expect(screen.getByRole('checkbox', { name: /another program decides what it does/ })).toBeInTheDocument()
+  })
+
+  it('the toast after "Always allow" has an Undo that sets the rule back', async () => {
+    useServer.setState({ settings: { tools: [{ name: 'write_file', permission: 'ask' }] } as unknown as Settings })
+    useUi.setState({ toasts: [] })
+    render(<ApprovalDock approval={approval()} row={row} />)
+    fireEvent.click(screen.getByRole('checkbox', { name: /Always allow/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Allow/ }))
+    await vi.waitFor(() => expect(calls).toHaveLength(2))
+    const t = useUi.getState().toasts.find((x) => x.title === 'write_file is now set to Allow')!
+    expect(t.body).toMatch(/in Compare, Re-run and evals/)
+    act(() => t.action!.run())
+    await vi.waitFor(() => expect(calls[2]).toBe('save {"permissions":{"write_file":"ask"}}'))
+    useServer.setState({ settings: null })
+  })
+
+  // F397: a path in the lab folder but outside the workspace shows from the lab folder on, the full one in a tip
+  it('shows a lab-folder path without the user folder', () => {
+    useServer.setState({ info: { folder: 'C:\\Users\\ada\\Harness\\workspace' } as Info })
+    render(<ApprovalDock approval={approval({ input: { path: '../config/my_hooks.py' }, path: '../config/my_hooks.py', outside: true,
+      setting: 'ask', where: 'C:\\Users\\ada\\Harness\\config\\my_hooks.py' })} row={row} />)
+    const code = screen.getByText('Harness/config/my_hooks.py')
+    expect(code).toHaveAttribute('title', 'C:\\Users\\ada\\Harness\\config\\my_hooks.py')
+    useServer.setState({ info: null })
   })
 
   // F311: a key typed before the panel is ready (while you were typing a message) must not answer it

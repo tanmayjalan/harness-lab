@@ -7,7 +7,7 @@ export type LoopNode = 'you' | 'call' | 'reply' | 'tools' | 'answer'
 
 const NODES: { id: LoopNode; x: number; y: number; title: string; sub: string }[] = [
   { id: 'you', x: 10, y: 50, title: '1. You', sub: 'type a message' },
-  { id: 'call', x: 172, y: 50, title: '2. Call the model', sub: 'send the whole history' },
+  { id: 'call', x: 172, y: 50, title: '2. Call the model', sub: 'send all history' }, // short: "send the whole history" wrapped onto the box's border (VIZ-3)
   { id: 'reply', x: 334, y: 50, title: '3. Model replies', sub: 'why did it stop?' },
   { id: 'tools', x: 496, y: 50, title: '4. Run tools', sub: 'on this computer' },
   { id: 'answer', x: 334, y: 136, title: '5. Show answer', sub: 'the loop ends' },

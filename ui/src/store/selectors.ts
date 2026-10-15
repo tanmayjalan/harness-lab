@@ -54,8 +54,12 @@ export async function stop() {
 export async function decide(id: string, allowed: boolean, alwaysAllowTool?: string): Promise<boolean> {
   try {
     if (allowed && alwaysAllowTool) {
+      // F390: the rule it had, so Undo can set it back (it was Ask first, or the panel wouldn't offer this)
+      const was: Rule = useServer.getState().settings?.tools?.find((t) => t.name === alwaysAllowTool)?.permission ?? 'ask'
       useServer.getState().setSettings(await api.saveSettings({ permissions: { [alwaysAllowTool]: 'allow' as Rule } }))
-      toast({ kind: 'ok', title: `${alwaysAllowTool} is now set to Allow`, body: 'Change it any time in Settings → Tools.' })
+      toast({ kind: 'ok', title: `${alwaysAllowTool} is now set to Allow`,
+        body: 'In every conversation, and in Compare, Re-run and evals, until you change it in Settings → Tools.',
+        action: { label: 'Undo', run: () => void setRuleBack(alwaysAllowTool, was) } })
     }
     await api.approve(id, allowed, !!(allowed && alwaysAllowTool))
     poke?.()
@@ -63,6 +67,16 @@ export async function decide(id: string, allowed: boolean, alwaysAllowTool?: str
   } catch (err) {
     toast({ kind: 'error', title: "Couldn't send your answer", body: message(err) })
     return false
+  }
+}
+
+// Undo of "Always allow": the tool's rule goes back to what it was (the answer already sent stays sent)
+async function setRuleBack(tool: string, rule: Rule) {
+  try {
+    useServer.getState().setSettings(await api.saveSettings({ permissions: { [tool]: rule } }))
+    toast({ kind: 'ok', title: `${tool} is back to ${rule === 'ask' ? 'Ask first' : rule === 'block' ? 'Block' : 'Allow'}` })
+  } catch (err) {
+    toast({ kind: 'error', title: "Couldn't undo", body: message(err) })
   }
 }
 

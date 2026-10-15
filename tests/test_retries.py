@@ -202,7 +202,9 @@ class QuietRetriesTests(unittest.TestCase):
     def test_every_provider_s_client_has_no_retries_of_its_own(self):
         with mock.patch.object(providers, "get_key", lambda name: "key"):
             for name in providers.PROVIDERS:
-                self.assertEqual(providers.make_client(name).max_retries, 0, name)
+                # ("Other server" has no address until you enter one: give it one here)
+                address = "http://127.0.0.1:9" if providers.is_local(name) else None
+                self.assertEqual(providers.make_client(name, base_url=address).max_retries, 0, name)
 
     # Summarising and the eval judge keep quiet retries: they aren't the lesson
     def test_summarising_keeps_quiet_retries(self):

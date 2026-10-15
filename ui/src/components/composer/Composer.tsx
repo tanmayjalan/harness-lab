@@ -8,7 +8,8 @@ import { send, stop, switchProvider } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { toast, useUi } from '../../store/ui'
-import { missingKeyHelp, shortLabel, switchNote } from './providerWords'
+import { destination, localDestination, modelsOf, shortLabel, switchNote, toolsTag, unusable } from './providerWords'
+import { HooksProblem } from './HooksProblem'
 import { Button, Kbd, Spinner, Tip } from '../ui'
 
 export type ComposerHandle = { focus: () => void; fill: (text: string) => void }
@@ -69,6 +70,7 @@ export const Composer = forwardRef<ComposerHandle>(function Composer(_, ref) {
         </div>
         <Totals />
       </div>
+      <HooksProblem />
       <div className={cn('flex items-end gap-2 rounded-xl border bg-panel p-2 shadow-sm transition-colors',
         'focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20 border-line')}>
         <textarea
@@ -85,7 +87,7 @@ export const Composer = forwardRef<ComposerHandle>(function Composer(_, ref) {
               submit()
             }
           }}
-          className="field-sizing-content max-h-48 min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-base outline-none placeholder:text-muted"
+          className="field-sizing-content max-h-48 min-h-9 flex-1 resize-none short:max-h-9 short:focus:max-h-32 bg-transparent px-2 py-1.5 text-base outline-none placeholder:text-muted"
         />
         {running ? (
           <Tip text="Stop at the next step" shortcut="Esc">
@@ -101,7 +103,8 @@ export const Composer = forwardRef<ComposerHandle>(function Composer(_, ref) {
           </Tip>
         )}
       </div>
-      <div className="px-1 text-xs text-muted">
+      {/* F429: on a short window the key hint gives its line to the chat (Send and Stop say their keys in their tips) */}
+      <div data-testid="key-hint" className="px-1 text-xs text-muted short:hidden">
         {running ? <><Kbd>Enter</Kbd> works again once the reply finishes; your message stays in the box</> : <><Kbd>Enter</Kbd> send</>}
         {' '}· <Kbd>Shift</Kbd>+<Kbd>Enter</Kbd> new line{running && <> · <Kbd>Esc</Kbd> stop</>}
       </div>
@@ -138,20 +141,23 @@ function ProviderPill() {
           className="pop-in z-50 min-w-72 rounded-lg border border-line bg-panel p-1 text-sm shadow-xl">
           <Menu.Label className="max-w-80 px-2 py-1 text-xs text-muted">{switchNote(messages)}</Menu.Label>
           <Menu.RadioGroup value={`${current}/${model}`}>
-          {info?.providers.flatMap((p) => (p.models ?? [p.model]).map((m) => {
+          {info?.providers.flatMap((p) => modelsOf(p).map((m) => {
             const on = p.name === current && m === model
+            const why = unusable(p)
             return (
-              <Menu.RadioItem key={`${p.name}/${m}`} value={`${p.name}/${m}`} aria-disabled={p.missing_key ? true : undefined}
-                onSelect={(e) => { if (p.missing_key) e.preventDefault(); else if (!on) switchProvider(p.name, m) }}
+              <Menu.RadioItem key={`${p.name}/${m}`} value={`${p.name}/${m}`} aria-disabled={why ? true : undefined}
+                onSelect={(e) => { if (why) e.preventDefault(); else if (!on) switchProvider(p.name, m) }}
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none aria-disabled:cursor-not-allowed aria-disabled:opacity-50 data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent data-[highlighted]:ring-2 data-[highlighted]:ring-accent data-[highlighted]:ring-inset">
                 <Check className={cn('size-3.5', on ? 'text-accent' : 'invisible')} />
                 <span className="flex-1">
                   <span className="font-medium">{p.label}</span>
                   <span className="block text-xs text-muted">
-                    {m}
-                    {p.missing_key ? '' : p.price ? ` · $${p.price.input} in / $${p.price.output} out per million tokens` : mockPrice(p.model_prices?.[m])}
+                    {m}{toolsTag(p, m)}
+                    {why ? '' : p.price ? ` · $${p.price.input} in / $${p.price.output} out per million tokens` : p.local ? ' · free' : mockPrice(p.model_prices?.[m])}
                   </span>
-                  {p.missing_key && <span className="block max-w-72 text-xs text-warn">{missingKeyHelp(p.missing_key)}</span>}
+                  {destination(p.name) && <span className="block text-xs text-muted">{destination(p.name)}</span>}
+                  {p.local && !why && <span className="block text-xs text-muted">{localDestination(p)}</span>}
+                  {why && <span className="block max-w-72 text-xs text-warn">{why}</span>}
                 </span>
               </Menu.RadioItem>
             )

@@ -10,7 +10,8 @@
 #   2. Claude Code (`claude`): installed, and one small `claude -p` call, made exactly as the mock makes them
 #   3. API keys (ANTHROPIC_API_KEY, DEEPSEEK_API_KEY): only for -Provider anthropic / deepseek; the mock needs none.
 #      A key you type isn't shown, and is saved for your Windows user (where `setx` saves it), never in a file.
-#   4. Node.js (only needed to change the page) and the port the lab uses (8000)
+#   4. Ollama and LM Studio (optional: free models on your computer), Node.js (only needed to change the page)
+#      and the port the lab uses (8000)
 param(
     [switch]$Check,
     [switch]$Quick
@@ -220,6 +221,23 @@ if ($node -and (Get-Command npm -ErrorAction SilentlyContinue)) {
 } else {
     Add-Result "Node.js" "skipped" "Not found. Only needed to change the page: the built page is in git."
 }
+# Models on your own computer: free, and nothing leaves it. Only their usual addresses are checked here
+$localReady = @{}
+foreach ($s in @(@{ Name = "ollama"; Label = "Ollama"; Url = "http://127.0.0.1:11434"; Get = "ollama.com, then ollama pull qwen3:4b" },
+                 @{ Name = "lmstudio"; Label = "LM Studio"; Url = "http://127.0.0.1:1234"; Get = "lmstudio.ai, then start its server (Developer tab)" })) {
+    try {
+        $list = Invoke-RestMethod "$($s.Url)/v1/models" -TimeoutSec 3
+        $n = @($list.data).Count
+        if ($n -gt 0) {
+            Add-Result $s.Label "ok" "running at $($s.Url), $n model(s)"
+            $localReady[$s.Name] = $true
+        } else {
+            Add-Result $s.Label "warning" "running at $($s.Url), but it has no models yet"
+        }
+    } catch {
+        Add-Result $s.Label "skipped" "not running at $($s.Url) (optional: free models on your computer; get it from $($s.Get))"
+    }
+}
 foreach ($p in @(@{ Port = 8000; What = "the web page" })) {  # (the mock runs inside it, on any free port)
     if (Test-Port $p.Port) {
         Add-Result "Port $($p.Port)" "warning" "in use ($($p.What)). Is the lab already running? stop.bat stops it."
@@ -242,6 +260,8 @@ if ($claudeOk) { $ways += "  start.bat                        the mock: replies 
 elseif ($claude -and $Quick) { $ways += "  start.bat                        the mock (claude -p not tried: -Quick)" }
 if ($haveKey["anthropic"]) { $ways += "  start.bat -Provider anthropic    the Anthropic API (paid per use)" }
 if ($haveKey["deepseek"]) { $ways += "  start.bat -Provider deepseek     DeepSeek (paid per use)" }
+if ($localReady["ollama"]) { $ways += "  start.bat -Provider ollama       a model in Ollama (free, on your computer)" }
+if ($localReady["lmstudio"]) { $ways += "  start.bat -Provider lmstudio     a model in LM Studio (free, on your computer)" }
 if ($ways) {
     Write-Host "Ready. Start the lab with:" -ForegroundColor Green
     $ways | ForEach-Object { Write-Host $_ }
@@ -249,7 +269,7 @@ if ($ways) {
         Write-Host "(-Quick didn't try claude -p, so the mock isn't proven yet: start.bat checks it, or run setup.bat without -Quick.)" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "No provider is ready yet: get claude -p working (step 2) or add an API key (step 3)." -ForegroundColor Yellow
+    Write-Host "No provider is ready yet: get claude -p working (step 2), add an API key (step 3), or run Ollama or LM Studio." -ForegroundColor Yellow
     exit 1
 }
 if ($canAsk) {

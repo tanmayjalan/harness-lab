@@ -4,6 +4,7 @@ Run:  python -m unittest -v
 """
 import isolate  # noqa: F401  (keeps tests away from your real files)
 import json
+import shutil
 import unittest
 from unittest import mock
 
@@ -28,6 +29,7 @@ class SandboxTests(unittest.TestCase):
     def test_the_sandbox_reads_its_own_config(self):
         real_config, real_mcp = paths.CONFIG, mcp_client.CONFIG
         tmp = sandbox.prepare(empty=True)
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)  # F452: don't leave a sandbox folder per test run
         self.assertEqual(paths.CONFIG, tmp / "config")
         self.assertEqual(mcp_client.CONFIG, tmp / "config" / real_mcp.name)
         self.assertNotEqual(paths.CONFIG, real_config)

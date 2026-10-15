@@ -40,3 +40,10 @@ export function ruleBadge(row: Pick<ToolRow, 'permission' | 'outside' | 'status'
   const r = RULES[row.permission]
   return { label: r.label, tone: row.permission === 'allow' ? 'neutral' : row.permission === 'ask' ? 'warn' : 'bad', help: r.help }
 }
+
+// MCP tools are named "<server>__<tool>" (harness/features/mcp_client.py): another program decides what they do
+export const isMcpTool = (name: string | undefined) => !!name && name.includes('__')
+
+// Tools whose Allow means something happens you can't see or take back: code that runs as you, a fact shared
+// in every conversation, or another program's tool. Allow on these is shown as a warning, not the safe green
+export const isRiskyTool = (name: string | undefined) => name === 'run_python' || name === 'remember_fact' || isMcpTool(name)

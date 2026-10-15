@@ -15,6 +15,21 @@ The mock gets real replies from `claude -p`, but it isn't the API, so some thing
   itself. The lesson (stop reason `max_tokens`, half-finished tool requests) is the same.
 - **Prompt caching** doesn't happen on the mock.
 
+## Models on your own server
+
+Ollama and LM Studio answer the same requests, but a small open model isn't Claude:
+
+- **Tools:** many models can't use them, and the call fails with the reason. Small ones that can still pick the
+  wrong tool or skip it. Settings → Model marks the models Ollama says can't use tools; LM Studio doesn't say.
+- **Prompt caching:** Ollama ignores the cache marks but reuses the start of the last request by itself, and
+  reports that as read from cache, so you see cache hits with caching on or off (as with DeepSeek).
+- **Thinking:** sent as a budget, but Ollama doesn't hold the model to it, and a model that can't think may
+  refuse the call.
+- **Token counts** come from the server: Ollama's are approximate. There's no cost: it runs on your machine.
+- **The context window** is whatever the server gives the model, often much smaller than Claude's, and some
+  servers cut a long conversation without saying so.
+- Tried live with Ollama only; LM Studio and other servers are covered by offline tests with a stand-in server.
+
 ## Not tried live
 
 Written for the Anthropic API but **not tried live** (no API key was available):
