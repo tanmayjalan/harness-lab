@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import * as RTooltip from '@radix-ui/react-tooltip'
 import type { HarnessEvent } from '../../api/types'
 import { deriveRuns } from '../../model/derive'
@@ -73,7 +73,7 @@ describe('Timeline', () => {
     show(declined)
     fireEvent.click(screen.getByText('write_file'))
     expect(screen.queryByText(/the harness ran it here/)).toBeNull()
-    expect(screen.getByText(/The model asked for/).textContent).toMatch(/you declined it/)
+    expect(within(screen.getByTestId('details')).getByText(/The model asked for/).textContent).toMatch(/you declined it/)
   })
 
   it('an opened blocked row says the harness refused it', () => {

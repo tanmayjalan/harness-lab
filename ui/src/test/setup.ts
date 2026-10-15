@@ -1,9 +1,14 @@
 // Adds DOM matchers such as toBeInTheDocument() to Vitest's expect, and clears the page between tests
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
-import { afterEach, vi } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
+import { usePrefs } from '../store/ui'
 
 afterEach(() => cleanup())
+
+// The tests written before the story view check today's full view, which is now under "Show details": open it for
+// them. The story view's own tests turn it off (components/run/StoryView.test.tsx)
+beforeEach(() => usePrefs.setState({ alwaysDetails: true }))
 
 // Every render gets the tooltip provider the App puts around the page, so a component with an IconButton
 // (whose label is also a tooltip) renders on its own, as it does inside the App

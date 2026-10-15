@@ -227,12 +227,12 @@ describe('F431, F433: older replies and headings', () => {
     return deriveRuns(events([...a, ...again]))
   }
 
-  it('the numbers under an older reply can be reached by Tab, and show when they are', () => {
+  // (the story view: every reply's numbers are one visible line, so none hides until hover)
+  it('the numbers under every reply are visible, not only on hover', () => {
     render(<Timeline model={two()} inspectedCallId={null} live="" running={false} />)
-    const groups = screen.getAllByRole('group', { name: 'Numbers for this reply' })
-    expect(groups).toHaveLength(1) // the newest reply's numbers are always shown
-    expect(groups[0]).toHaveAttribute('tabindex', '0')
-    expect(groups[0].className).toMatch(/focus:opacity-100/)
+    const lines = screen.getAllByTestId('story-numbers')
+    expect(lines).toHaveLength(2)
+    for (const l of lines) expect(l.closest('[class*="opacity-0"]')).toBeNull()
   })
 
   it('each message and each reply has a heading', () => {

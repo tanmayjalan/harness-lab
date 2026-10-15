@@ -18,7 +18,8 @@ function sources(dir: string): string[] {
   })
 }
 
-const code = sources(join(__dirname, '..', 'components')).join('\n')
+// (the story's takeaways name their idea in model/story.ts)
+const code = [...sources(join(__dirname, '..', 'components')), readFileSync(join(__dirname, '..', 'model', 'story.ts'), 'utf8')].join('\n')
 const shown = (key: string) => new RegExp(`concept(=|:\\s*)["'{]+${key}["'}]`).test(code)
 
 describe('experiments', () => {

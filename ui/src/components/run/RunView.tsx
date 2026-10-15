@@ -204,10 +204,12 @@ export function RunView({ composerRef, onRerun, onRewind }:
         </div>
       </div>
       {/* F429: at 200% zoom the guess, the hints and the box could leave the chat a sliver: this area takes at most
-          a little over half the height and scrolls itself beyond that ("Jump to latest" sits above it, unclipped) */}
+          a little over half the height and scrolls itself beyond that. "Jump to latest" takes its own line at the top of
+          this area, so it never sits on top of the conversation's text */}
       <div className="relative flex max-h-[55%] shrink-0 flex-col px-4 pt-2 pb-3">
         {!atBottom && !empty && (
-          <Button size="sm" className="absolute -top-10 left-1/2 -translate-x-1/2 rounded-full shadow-md"
+          <div className="flex shrink-0 justify-center pb-1.5">
+          <Button size="sm" data-testid="jump-latest" className="rounded-full shadow-sm"
             onClick={() => {
               const el = scroller.current
               // a jump, not a glide, when you asked for less motion (CSS can't reach a scroll started here)
@@ -217,6 +219,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
             }}>
             <ArrowDown className="size-3.5" /> Jump to latest
           </Button>
+          </div>
         )}
         <div className="mx-auto min-h-0 w-full max-w-3xl overflow-y-auto px-1 py-0.5">
           {!pending && <><ExperimentChanges /><ExperimentNow model={model} /></>}
