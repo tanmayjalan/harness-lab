@@ -3,7 +3,7 @@
 // and running totals. Pure: same events in, same model out. No screen code here.
 import type {
   ApprovalEvent, Block, CompactedEvent, HarnessEvent, HookEvent, HookName, HookVerdict, Outcome, RequestEvent,
-  ResponseEvent, Rule, SubEvent, ToolCallEvent, ToolResultEvent, TrimInfo, Usage, Verdict, WorkflowStepName,
+  ResponseEvent, Rule, ScriptText, SubEvent, ToolCallEvent, ToolResultEvent, TrimInfo, Usage, Verdict, WorkflowStepName,
 } from '../api/types'
 
 // read: all input (fresh + from cache + written to cache); cached: read from the cache; written: written to it
@@ -15,7 +15,7 @@ export type PlanStep = { text: string; status: 'pending' | 'in_progress' | 'done
 
 export type Approval = { id: string; toolId: string | null; tool: string; prompt: string; input: Record<string, unknown>;
   path: string; content: string; outside: boolean; decision?: boolean; askedAt?: number; decidedAt?: number
-  where?: string; setting?: Rule; replaces?: { label: string; value: string; shared: boolean } }
+  where?: string; setting?: Rule; replaces?: { label: string; value: string; shared: boolean }; script?: ScriptText }
 
 export type HelperCall = { n: number; startedAt: number; seconds?: number; stopReason?: string; tokens: Tokens;
   cost: number | null; messages: number; retries?: Retry[] }
@@ -322,7 +322,7 @@ export function deriveRuns(events: HarnessEvent[]): RunModel {
         const row = findOpenRow(m, call, e)
         const approval: Approval = {
           id: e.id, toolId: row?.id ?? null, tool: e.tool, prompt: e.prompt, input: e.input ?? {}, path: e.path,
-          content: e.content, askedAt: e.time, where: e.where, setting: e.setting, replaces: e.replaces,
+          content: e.content, askedAt: e.time, where: e.where, setting: e.setting, replaces: e.replaces, script: e.script,
           // the server's own flag; older saves only had it in the question's wording
           outside: e.outside ?? row?.outside ?? e.prompt.includes('OUTSIDE the workspace'),
         }

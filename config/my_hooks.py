@@ -29,6 +29,9 @@ def before_tool(name, args):
     # only catches the obvious cases. Ask first, where you read the code yourself, is the real guard.
     if name == "run_python":
         code = str(args.get("code", ""))
+        if "path" in args:  # a script file in the workspace: check what it says now
+            from harness.core import run_code
+            code = run_code.script_text(args["path"]).get("text", "")
         hit = next((w for w in ("shutil.rmtree", "os.remove", "subprocess") if w in code), None)
         if hit:
             return f"code that uses {hit} can delete files or start other programs, so the user's hook blocks it"

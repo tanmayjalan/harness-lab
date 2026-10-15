@@ -4,6 +4,7 @@ Run:  python -m unittest -v
 """
 import isolate  # noqa: F401  (keeps tests away from your real files)
 import contextlib
+import http.client
 import io
 import json
 import threading
@@ -69,14 +70,87 @@ class ReplyShapeTests(unittest.TestCase):
         self.assertNotEqual(msg["content"][0]["id"], msg["content"][1]["id"])
 
 
+class OnlyTheHarnessMayAskTests(unittest.TestCase):
+    """F387: each request spends the user's Claude Code plan, and any web page can send requests to
+    127.0.0.1. So the mock answers only requests addressed to 127.0.0.1 or localhost, sent as JSON and
+    carrying its key. `claude -p` is faked: a refused request must never reach it."""
+
+    def setUp(self):
+        self.server, self.key = mock_server.serve()
+        self.port = self.server.server_port
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def post(self, headers, body=b'{"model": "m", "max_tokens": 10, "messages": []}'):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.putrequest("POST", "/v1/messages", skip_host=True)
+        for name, value in headers.items():
+            conn.putheader(name, value)
+        conn.putheader("Content-Length", str(len(body)))
+        conn.endheaders(body)
+        response = conn.getresponse()
+        status, data = response.status, json.loads(response.read() or b"{}")
+        conn.close()
+        return status, data
+
+    def ok_headers(self, **changes):
+        headers = {"Host": f"127.0.0.1:{self.port}", "Content-Type": "application/json", "x-api-key": self.key}
+        headers.update(changes)
+        return {k: v for k, v in headers.items() if v is not None}
+
+    def test_refused_requests_never_reach_claude(self):
+        cases = {
+            "no key": (self.ok_headers(**{"x-api-key": None}), 401),
+            "wrong key": (self.ok_headers(**{"x-api-key": "mock"}), 401),
+            "another host name (a page using a look-alike address)": (self.ok_headers(Host="evil.example:80"), 403),
+            "not JSON (what a web page can send without asking first)": (
+                self.ok_headers(**{"Content-Type": "text/plain"}), 415),
+        }
+        with mock.patch.object(mock_server, "ask_claude") as ask:
+            for name, (headers, expected) in cases.items():
+                with self.subTest(name):
+                    status, body = self.post(headers)
+                    self.assertEqual(status, expected)
+                    self.assertEqual(body["type"], "error")
+            ask.assert_not_called()
+
+    def test_the_right_request_is_answered(self):
+        fake = {"text": "hello", "tool_calls": []}
+        with mock.patch.object(mock_server, "ask_claude", return_value=fake):
+            status, body = self.post(self.ok_headers(Host="localhost"))
+        self.assertEqual(status, 200)
+        self.assertEqual(body["content"][-1]["text"], "hello")
+
+    def test_a_handler_without_a_key_refuses_everything(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), mock_server.Handler)  # not via serve(): no key set
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            self.port = server.server_port
+            with mock.patch.object(mock_server, "ask_claude") as ask:
+                status, _ = self.post(self.ok_headers(**{"x-api-key": "anything"}))
+            self.assertEqual(status, 401)
+            ask.assert_not_called()
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_each_server_gets_its_own_random_key(self):
+        other, other_key = mock_server.serve()
+        other.shutdown()
+        other.server_close()
+        self.assertNotEqual(self.key, other_key)
+        self.assertGreaterEqual(len(self.key), 24)
+
+
 class OverHttpTests(unittest.TestCase):
     """The real Anthropic SDK talks to the server; only `claude -p` is faked."""
 
     def setUp(self):
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), mock_server.Handler)
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.server, key = mock_server.serve()
         self.client = anthropic.Anthropic(
-            api_key="mock", base_url=f"http://127.0.0.1:{self.server.server_port}", max_retries=0)
+            api_key=key, base_url=f"http://127.0.0.1:{self.server.server_port}", max_retries=0)
 
     def tearDown(self):
         self.server.shutdown()
