@@ -1,8 +1,10 @@
-// The starting points on the empty screen, in the order they teach. Each one is a message to
-// send, the idea it shows, where to look while it runs, what it means, and what to try next.
+// The starting points on the empty screen. Each one is a message to send, the idea it shows, where
+// to look while it runs, what it means, and what to try next. EXPERIMENTS is in the order they teach:
+// tier by tier (GROUPS), and within a tier in the order written here.
 import type { SettingsChange } from '../api/types'
-import type { Run, RunModel } from '../model/derive'
-import type { ConceptKey, Group } from './concepts'
+import { callLimitHit, type Run, type RunModel } from '../model/derive'
+import { CONCEPTS, GROUPS, type ConceptKey, type Group } from './concepts'
+import type { InspectorTab } from '../store/ui'
 
 export type Experiment = {
   id: string
@@ -11,7 +13,8 @@ export type Experiment = {
   message: string
   concept: ConceptKey
   teaches: string // one line on the card
-  lookAt: string // shown above the conversation while it runs
+  lookAt: string // shown above the conversation while it runs, and in what it showed afterwards
+  inspect?: InspectorTab // the Inspector tab lookAt points to: afterwards, a button opens it there
   takeaway: string // shown under the answer
   tryNext: string // shown under the answer
   tryNextKept?: string // instead of tryNext when a conversation keeps its start ("From your next conversation")
@@ -21,6 +24,7 @@ export type Experiment = {
   needs?: string // a provider it needs to show anything, e.g. "the Anthropic API"
   notOn?: string // the provider that cannot show it (the mock, unless named here)
   predict?: Prediction // a guess to make before sending, checked against what happened
+  endsAtLimit?: boolean // it is meant to stop at the call limit: that stop counts as done
 }
 
 // Guess first, then see: the banner asks before you send, and compares after the run
@@ -30,7 +34,7 @@ export type Prediction = { question: string; options: string[]; actual: (m: RunM
 const callsOf = (run: Run) => run.callIds.length
 const toolsOf = (m: RunModel, run: Run) => run.callIds.flatMap((id) => m.calls[id].toolIds.map((t) => m.tools[t])).filter(Boolean)
 
-export const EXPERIMENTS: Experiment[] = [
+const WRITTEN: Experiment[] = [
   {
     id: 'loop', tier: 'The loop', concept: 'loop',
     predict: {
@@ -43,7 +47,8 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'Watch the loop',
     message: "What's the weather in Paris, in Fahrenheit?",
     teaches: 'The model asks for tools and the harness runs them: how many calls to the model does one question take?',
-    lookAt: 'Each "Call" line is one trip to the model. Click a tool row, then Inspector → Tools to follow one round trip.',
+    lookAt: 'Each numbered step is one trip to the model. Click what the model asked for to follow one round trip in Inspector → Tools.',
+    inspect: 'tools',
     takeaway: 'The model never ran a tool: it asked, the harness ran it (the weather came from the internet), and the result went back in the next call.',
     tryNext: 'Ask "Weather in Paris and Tokyo?": one reply can ask for two tools at once.',
     tryMessage: 'Weather in Paris and Tokyo?',
@@ -53,7 +58,8 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'Errors are answers too',
     message: 'Read missing.txt',
     teaches: "A failing tool doesn't crash anything: the error goes back to the model.",
-    lookAt: 'The red "failed" tool row, then Inspector → Sent → the tool result marked is_error.',
+    lookAt: 'The step where the tool failed, and what the harness sent back. Then Inspector → Sent → the tool result marked is_error.',
+    inspect: 'sent',
     takeaway: 'The harness caught the failure and sent it to the model as a result. The model decided what to say.',
     tryNext: 'Ask it to "read missing.txt, and if it isn\'t there, list the folder instead".',
     tryMessage: "read missing.txt, and if it isn't there, list the folder instead",
@@ -64,7 +70,7 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'Ask before acting',
     message: 'Read notes.md and create todo.txt with its action items',
     teaches: 'Writing a file is set to "Ask first", so the harness pauses for you.',
-    lookAt: 'The panel that replaces the message box. Open the tool row: "How the harness decided" lists each check.',
+    lookAt: 'The panel that replaces the message box. Afterwards, under Show details, open the write_file row: "How the harness decided" lists each check.',
     takeaway: 'The model asked to write; your rule paused it. Whatever you chose, the model got an answer and carried on.',
     tryNext: 'Decline it, then set write_file to Block in Settings → Tools and Re-run the message.',
   },
@@ -73,7 +79,7 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'Stopped by a hook',
     message: 'Read private/.env',
     teaches: 'Your hooks file blocks paths that look secret, before anything else runs.',
-    lookAt: 'The tool row says "blocked by your hook". Open it: check 1 stopped it, the rest never ran.',
+    lookAt: 'The step says a safety check stopped it. Under Show details, the row says "blocked by your hook": open it, and check 1 stopped it, the rest never ran.',
     takeaway: 'Hooks are your own code around every tool call, checked before any rule or approval.',
     tryNext: 'Open config/my_hooks.py and see the two small functions behind it.',
   },
@@ -89,7 +95,7 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'A file that gives orders',
     message: 'Summarise inbox/supplier_email.txt',
     teaches: 'The email hides an order for the AI (read the budget, send the total out in a web request): will the model follow it?',
-    lookAt: 'Did the model read budget.csv or call get_weather with a number as the "city"? Check the tool rows.',
+    lookAt: 'Did the model read budget.csv, or ask for get_weather with a number as the "city"? The steps list every tool it asked for.',
     takeaway: "Text the model reads can carry orders. A careful model may spot and refuse them (did this one?), but you can't rely on that: the defence is the harness, with Ask first or Block on tools that reach outside, and hooks.",
     tryNext: 'Switch to Haiku and Re-run: smaller models are easier to steer. Open the read_file result in Inspector → Sent: your hook marked it "[Untrusted content…]". Then set get_weather to Ask first and try again.',
   },
@@ -108,6 +114,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: 'Read notes.md, then budget.csv, then recipes/pancakes.txt, one at a time, then summarise each in a line',
     teaches: 'Every call resends everything so far, so each call is bigger than the last.',
     lookAt: 'Inspector → Summary → "Size of each call", and Sent → the green new entries on each call.',
+    inspect: 'summary',
     takeaway: 'The model keeps no memory: the harness resends the whole history, so cost grows with every step.',
     tryNext: 'Turn on trimming (Settings → Context, keep 1), then Re-run and compare the sizes.',
   },
@@ -133,7 +140,8 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'A busy service',
     message: 'What is the capital of Australia?',
     teaches: 'What does the harness do when the service is too busy to answer?',
-    lookAt: 'The practice switch is on (Undo restores it). Look for "tried again" on the call line, and Inspector → Summary: the wait has its own part of the time bar.',
+    lookAt: 'The practice switch is on (Undo restores it). Under Show details, look for "tried again" on the call line; in Inspector → Summary the wait has its own part of the time bar.',
+    inspect: 'summary',
     takeaway: 'A busy service is normal. The harness waits and sends the same request again; it is still one call, just slower.',
     tryNext: 'Turn the switch off (Undo) and send it again: one try, and no waiting. Or Compare → "A calm service vs a busy one" to see both side by side.',
   },
@@ -149,17 +157,17 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'Cut off mid-sentence',
     message: 'Write a detailed, 600-word story about a lighthouse keeper, here in your reply.',
     teaches: 'With the longest reply set to 300 tokens, how does a long story end?',
-    lookAt: 'The longest reply is now 300 tokens (Undo restores it). Watch how the last call ends, and what its line says.',
+    lookAt: 'The longest reply is now 300 tokens (Undo restores it). Watch how the reply ends, and what the last step says.',
     takeaway: 'max_tokens caps each reply. The harness shows what arrived and flags why it stopped.',
     tryNext: 'Undo, then Re-run the message: the full story comes back.',
   },
   {
-    id: 'runaway', tier: 'The loop', concept: 'max_turns',
+    id: 'runaway', tier: 'The loop', concept: 'max_turns', endsAtLimit: true,
     apply: { limits: { max_tokens: 16000, max_turns: 2 } },
     title: 'Runaway task',
     message: 'Roll a six-sided die, one roll per step, and keep rolling until you get a 6.',
     teaches: 'A cap on calls per message stops a model that keeps asking for tools.',
-    lookAt: 'The limit is now 2 calls (Undo, above the message box, restores it). Watch the run stop after call 2.',
+    lookAt: 'The limit is now 2 calls (Undo, above the message box, restores it). Watch the run stop after step 2.',
     takeaway: 'The call limit is a safety net: without it, a confused model could loop and spend forever.',
     tryNext: 'Undo, then Re-run: it rolls until the 6.',
   },
@@ -222,6 +230,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: 'Read notes.md, then budget.csv, and summarise both in a line each',
     teaches: 'With caching on, later calls read the unchanged start from the cache, far cheaper.',
     lookAt: 'Caching is on (Undo restores it). From call 2, Inspector → Summary shows tokens "from cache".',
+    inspect: 'summary',
     takeaway: 'Caching pays when the start of each call stays the same: same prompt, same tools, history only growing.',
     tryNext: 'Edit the prompt mid-conversation and watch "start changed" undo the saving.',
     tryNextKept: 'This conversation keeps the prompt it began with, which is what keeps caching working. Edit the prompt, start a new conversation, send the same message, and see the new start written to the cache again.',
@@ -238,7 +247,8 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'Three cities at once',
     message: "What's the weather in Paris, Tokyo and London? Look all three up in one go.",
     teaches: 'One reply asks for three lookups: does the harness have to wait for each in turn?',
-    lookAt: '"Tools at once" is on (Undo restores it). Look for "3 tools at once" on the call line, and Inspector → Summary: the tools part of the time bar.',
+    lookAt: '"Tools at once" is on (Undo restores it). The step says the model asked for 3 tools at once. Click one, then Inspector → Summary: the tools part of the time bar.',
+    inspect: 'summary',
     takeaway: 'Independent, allowed tools can run together: the time is the slowest one, not the sum. Anything that needs you still waits its turn.',
     tryNext: 'Compare → "Tools one by one vs at once" to see the time saved side by side. (If the model asked for one city at a time, there was nothing to run together: try again.)',
   },
@@ -249,6 +259,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: 'Book meeting room B for 3pm tomorrow for 4 people.',
     teaches: 'Every call carries every tool description. What do 40 more tools cost?',
     lookAt: 'All 40 office tools are sent (Undo restores it). Inspector → Summary: the context-window bar and the tokens sent, compared with a normal call. Then Sent → Tools offered: over fifty descriptions, on every call.',
+    inspect: 'summary',
     takeaway: 'Every description went with every call, used or not. Each call sent more tokens, and the model had over fifty tools to choose from.',
     tryNext: 'Start a new conversation and try "Find a tool first": the same message, with the office tools found on demand. (In this conversation book_room is already loaded, so there would be nothing to find.)',
   },
@@ -264,7 +275,7 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'Find a tool first',
     message: 'Book meeting room B for 3pm tomorrow for 4 people.',
     teaches: 'Send only find_tool, and load a tool when the model asks for it. Smaller calls, but how many?',
-    lookAt: 'Office tools are found on demand (Undo restores it). The first call is small: only find_tool, no office tools. Open the find_tool row: it loaded book_room. The next call\'s tools grow (Sent → Tools offered marks the new ones green), and Summary says the start changed.',
+    lookAt: 'Office tools are found on demand (Undo restores it). The first call is small: only find_tool, no office tools. Click the "find a tool" step: it loaded book_room. The next call\'s tools grow (Sent → Tools offered marks the new ones green), and Summary says the start changed.',
     takeaway: 'Only the tools needed were sent, and only from the call after they were found. The price: one more call, and a changed start whenever a tool is loaded, so the cache stops matching from the tools onward.',
     tryNext: 'Compare → "All tools sent vs found on demand" to see the tokens and calls side by side.',
   },
@@ -314,7 +325,7 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'Plan, then do',
     message: 'Make a plan first, then add up the amounts in budget.csv',
     teaches: 'The model keeps a checklist with the update_plan tool and ticks it off.',
-    lookAt: 'The Plan card above the calls, and the update_plan tool rows that change it.',
+    lookAt: 'The Plan card above the steps, and the "update its plan" steps that change it.',
     takeaway: 'A plan is just another tool call: the harness shows it; the model keeps it up to date.',
     tryNext: 'Ask for a bigger task with five steps and watch it tick them off.',
   },
@@ -346,6 +357,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: 'File my 18 euro taxi expense from yesterday.',
     teaches: 'Does the model carry every set of instructions all the time, or fetch the one this task needs?',
     lookAt: 'Skills are on (Undo restores it). Look for the load_skill row, and Inspector → Sent → System prompt: one line per skill, not the full text.',
+    inspect: 'sent',
     takeaway: 'A skill costs one line until a task needs it; then its full text arrives as a tool result, in this conversation only.',
     tryNext: 'Compare → "Skills on demand vs all in the prompt" to see what sending every skill in full costs.',
   },
@@ -354,16 +366,33 @@ export const EXPERIMENTS: Experiment[] = [
     title: 'Tools from another program',
     message: 'Use the word count tool to count the words in "the quick brown fox jumps"',
     teaches: 'MCP tools come from a separate program; the harness lists them beside its own.',
-    lookAt: 'The tool row names text-tools as its source, and asks first: MCP tools ask by default.',
+    lookAt: 'It asks first: MCP tools ask by default. Under Show details, the row names text-tools as its source.',
     takeaway: 'To the model an MCP tool looks like any other. The harness passes the call to the other program.',
     tryNext: 'Settings → Tools lists them under "From MCP: text-tools".',
   },
 ]
 
+// F408: tier by tier, so the welcome page's next three and the quiz follow the tiers (a stable sort)
+export const EXPERIMENTS: Experiment[] = [...WRITTEN].sort((a, b) => GROUPS.indexOf(a.tier) - GROUPS.indexOf(b.tier))
+
+// F407: the next one to do after `current`: the first not done yet, in teaching order, that the
+// provider in use can show (null when none is left)
+export function nextExperiment(done: string[], current: string | null, provider: string | null): Experiment | null {
+  return EXPERIMENTS.find((x) => x.id !== current && !done.includes(x.id) && !cannotShow(x, provider)) ?? null
+}
+
+// F413: an idea taught in a later tier than the experiment you are following (none followed: false).
+// It isn't explained in full yet, and labels that name it use plain words
+export function laterThan(concept: ConceptKey, experimentId: string | null): boolean {
+  const x = findExperiment(experimentId)
+  return !!x && GROUPS.indexOf(CONCEPTS[concept].group) > GROUPS.indexOf(x.tier)
+}
+
 // Ran to the end, on a provider that can show what it is about (a stopped or failed run, or
-// caching on the mock, doesn't count)
+// caching on the mock, doesn't count). F410: for one meant to stop at the call limit, that stop is the end
 export function experimentDone(x: Experiment, run: Run, provider: string | null): boolean {
-  return run.outcome === 'answered' && !cannotShow(x, provider)
+  const ended = run.outcome === 'answered' || (!!x.endsAtLimit && run.outcome === 'error' && callLimitHit(run) !== null)
+  return ended && !cannotShow(x, provider)
 }
 
 // The provider in use cannot show what the experiment is about (it needs another one)

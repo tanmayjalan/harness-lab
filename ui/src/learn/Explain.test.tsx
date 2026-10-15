@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render } from '@testing-library/react'
-import { Explain } from './Explain'
+import { Explain, readingTime } from './Explain'
 import { usePrefs } from '../store/ui'
 import { useSession } from '../store/session'
 
@@ -24,11 +24,14 @@ afterEach(() => {
 
 // F064: an explanation that scrolls past during a live run has not been read
 describe('Explain marks an idea read', () => {
-  it('after about three seconds on screen when nothing is running', () => {
+  // F427: after the time it takes to read it, not a flat three seconds
+  it('after long enough on screen to read it, when nothing is running', () => {
+    const t = readingTime('loop')
+    expect(t).toBeGreaterThan(3000) // the loop's explanation is long
     render(<Explain concept="loop" />)
-    act(() => { vi.advanceTimersByTime(1600) })
+    act(() => { vi.advanceTimersByTime(t - 100) })
     expect(usePrefs.getState().explained).not.toContain('loop')
-    act(() => { vi.advanceTimersByTime(1600) })
+    act(() => { vi.advanceTimersByTime(200) })
     expect(usePrefs.getState().explained).toContain('loop')
   })
 

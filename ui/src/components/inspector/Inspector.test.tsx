@@ -251,7 +251,7 @@ describe('pieces', () => {
   // F005: a narrow panel still says what the two ways out of "Model replies" mean
   it('the compact diagram keeps a one-line legend', () => {
     render(<LoopDiagram active={null} compact />)
-    expect(text()).toMatch(/tool_use: run tools, call again · end_turn: show the answer/)
+    expect(text()).toMatch(/asked for tools: run them, call again · finished: show the answer/) // F414: plain words
   })
 
   // F162: a reply that stopped early is marked on the diagram
@@ -344,7 +344,7 @@ describe('pieces', () => {
       expect(within(img).getByText('stopped early').tagName).toBe('DIV')
       if (!compact) {
         expect(within(img).getByText('send the whole history').className).toMatch(/\btext-2xs\b/)
-        expect(within(img).getByText('finished (end_turn)').tagName).toBe('DIV')
+        expect(within(img).getByText('finished').tagName).toBe('DIV')
       } else {
         expect(within(img).queryByText('send the whole history')).toBeNull()
       }
@@ -456,7 +456,7 @@ describe('charts in words (F335)', () => {
     render(<LoopDiagram active={null} />)
     const label = screen.getByRole('img').getAttribute('aria-label')!
     for (const step of ['1. You', '2. Call the model', '3. Model replies', '4. Run tools', '5. Show answer']) expect(label).toContain(step)
-    expect(label).toContain('tool_use loops back to Call the model; end_turn ends')
+    expect(label).toContain('asking for tools loops back to Call the model; a finished reply ends it')
   })
 
   it('the selected bar keeps its colour and gets an outline in Windows high contrast', () => {

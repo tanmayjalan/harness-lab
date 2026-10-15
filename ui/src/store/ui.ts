@@ -1,7 +1,7 @@
 // Page state that isn't the server's: which call is selected, which screen and panels are
 // open, toasts, and preferences kept between visits.
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import type { SettingsChange } from '../api/types'
 
 export type Screen = 'run' | 'compare' | 'evals'
@@ -35,14 +35,18 @@ type UiState = {
   toasts: Toast[]
   experimentId: string | null // the experiment this conversation is following
   guess: string | null // your prediction for it, before sending
+  experimentConversation: string | null // the conversation its message was sent in, once it was
   experimentsOpen: boolean
   draft: { text: string; n: number } // text to put in the message box (n changes each time)
   approvalDock: ApprovalDockHandle | null // the approval panel on screen, if any: the A and D keys answer through it
   keepScroll: boolean // you opened a tool row: the chat must not jump to the bottom because it grew
   composerText: string // what is typed in the message box right now (so picking an experiment can ask first)
   settingsDrafts: Record<string, string> // unsaved text in Settings ('system', 'desc:<tool>'), kept while you move around
+  spoken: { text: string; n: number } // F425: a sentence for screen readers, read out by the Announcer (n changes each time)
+  focusInspector: boolean // F426: the Inspector takes focus when it next shows a call (you picked one in the chat)
   setScreen: (s: Screen) => void
   selectCall: (id: string | null, toolId?: string | null) => void
+  inspect: (callId: string, tab: InspectorTab, opts?: { toolId?: string | null; narrow?: boolean }) => void // F406: open the Inspector on a call
   follow: () => void
   openSettings: (section?: SettingsSection) => void
   closeSettings: () => void
@@ -65,6 +69,7 @@ type UiState = {
   setSettingsDraft: (key: string, text: string | null) => void
   setComposerText: (text: string) => void
   setKeepScroll: (on: boolean) => void
+  setFocusInspector: (on: boolean) => void
 }
 
 let nextToast = 1
@@ -74,7 +79,16 @@ function remember() {
   returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null
 }
 
-export const useUi = create<UiState>((set, get) => ({
+// F411: an experiment you were following comes back after a reload (it was set aside in this tab)
+let restoredExperiment = false
+// True once, after a reload brought an experiment back: the message box can get its message again
+export function takeRestoredExperiment() {
+  const was = restoredExperiment
+  restoredExperiment = false
+  return was
+}
+
+export const useUi = create<UiState>()(persist((set, get) => ({
   screen: 'run',
   selectedCallId: null,
   selectedToolId: null,
@@ -89,16 +103,27 @@ export const useUi = create<UiState>((set, get) => ({
   toasts: [],
   experimentId: null,
   guess: null,
+  experimentConversation: null,
   experimentsOpen: false,
   draft: { text: '', n: 0 },
   approvalDock: null,
   settingsDrafts: {},
   composerText: '',
   keepScroll: false,
+  spoken: { text: '', n: 0 },
+  focusInspector: false,
   setScreen: (screen) => set({ screen }),
   selectCall: (selectedCallId, selectedToolId = null) => {
     usePrefs.getState().sawInspectHint() // you found the Inspector: the "inspect →" hint has done its job
     set({ selectedCallId, selectedToolId, followLatest: false })
+  },
+  // `narrow`: on a narrow screen go to the Inspector view too (a button asked for it; a tool row opening
+  // in the chat does not, so you stay where you were reading)
+  inspect: (callId, tab, opts) => {
+    get().selectCall(callId, opts?.toolId ?? null)
+    usePrefs.getState().setInspectorTab(tab)
+    usePrefs.getState().setInspectorOpen(true)
+    if (opts?.narrow && typeof matchMedia !== 'undefined' && matchMedia('(max-width: 899px)').matches) set({ mobilePane: 'inspect' })
   },
   follow: () => set({ followLatest: true, selectedToolId: null }),
   openSettings: (section) => { if (!get().settingsOpen) remember(); set((s) => ({ settingsOpen: true, settingsSection: section ?? s.settingsSection })) },
@@ -128,19 +153,27 @@ export const useUi = create<UiState>((set, get) => ({
   setSidebarSheet: (sidebarSheet) => set({ sidebarSheet }),
   startCompare: (compareDraft) => set({ compareDraft, screen: 'compare' }),
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
-  setExperiment: (experimentId) => set({ experimentId, guess: null }),
+  setExperiment: (experimentId) => set({ experimentId, guess: null, experimentConversation: null }),
   setGuess: (guess) => set({ guess }),
   setExperimentsOpen: (experimentsOpen) => { if (experimentsOpen && !get().experimentsOpen) remember(); set({ experimentsOpen }) },
   fillDraft: (text) => set((s) => ({ draft: { text, n: s.draft.n + 1 } })),
   setApprovalDock: (approvalDock) => set({ approvalDock }),
   setComposerText: (composerText) => set({ composerText }),
   setKeepScroll: (keepScroll) => set({ keepScroll }),
+  setFocusInspector: (focusInspector) => set({ focusInspector }),
   setSettingsDraft: (key, text) => set((s) => {
     const next = { ...s.settingsDrafts }
     if (text === null) delete next[key]
     else next[key] = text
     return { settingsDrafts: next }
   }),
+}), {
+  // Only the experiment you are following, and only for this tab (sessionStorage): a reload keeps it,
+  // a visit another day starts without it
+  name: 'harness-lab-experiment',
+  storage: createJSONStorage(() => sessionStorage),
+  partialize: (s) => ({ experimentId: s.experimentId, guess: s.guess, experimentConversation: s.experimentConversation }),
+  onRehydrateStorage: () => (state) => { if (state?.experimentId) restoredExperiment = true },
 }))
 
 // Plain notes go after 6 seconds; errors and ones with a button (Undo) stay 20 seconds, and any of
@@ -151,6 +184,11 @@ function schedule(t: Toast) {
     timers.delete(t.id)
     useUi.getState().dismiss(t.id)
   }, t.kind === 'error' || t.action ? 20000 : 6000))
+}
+
+// Read a sentence out to screen readers (through the Announcer's always-present live region)
+export function say(text: string) {
+  useUi.setState((s) => ({ spoken: { text, n: s.spoken.n + 1 } }))
 }
 
 export function toast(t: Omit<Toast, 'id'>) {
@@ -178,6 +216,7 @@ type Prefs = {
   explained: string[] // concepts already explained in full once
   experimentsDone: string[] // experiments you've run to the end
   experimentBefore: ExperimentBefore | null
+  alwaysDetails: boolean // every message opens with its details (calls, tokens, tool rows), not only the story
   inspectHintSeen: boolean // you have clicked a call line once, so the "inspect →" hint can go
   quizAnswers: Record<string, number> // Help → Quiz me: the option you picked per question
   fontSize: FontSize
@@ -193,6 +232,7 @@ type Prefs = {
   setExperimentBefore: (b: ExperimentBefore | null) => void
   resetExperimentsDone: () => void
   sawInspectHint: () => void
+  setAlwaysDetails: (on: boolean) => void
   answerQuiz: (id: string, option: number | null) => void
   resetExplained: () => void
   setFontSize: (f: FontSize) => void
@@ -211,6 +251,7 @@ export const usePrefs = create<Prefs>()(
       experimentsDone: [],
       experimentBefore: null,
       inspectHintSeen: false,
+      alwaysDetails: false,
       quizAnswers: {},
       fontSize: 'md',
       // (no version bump: the stored prefs are merged over these defaults, so a page saved before has System)
@@ -235,6 +276,7 @@ export const usePrefs = create<Prefs>()(
       setExperimentBefore: (experimentBefore) => set({ experimentBefore }),
       resetExperimentsDone: () => set({ experimentsDone: [] }),
       sawInspectHint: () => set({ inspectHintSeen: true }),
+      setAlwaysDetails: (alwaysDetails) => set({ alwaysDetails }),
       setFontSize: (fontSize) => set({ fontSize }),
       setTheme: (theme) => set({ theme }),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),

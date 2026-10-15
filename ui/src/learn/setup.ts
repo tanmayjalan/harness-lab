@@ -117,7 +117,8 @@ export function mergeBefore(earlier: ExperimentBefore | null, later: ExperimentB
   }
 }
 
-export async function setUpExperiment(x: Experiment) {
+// `undone`: what an earlier experiment had changed, just put back before this one: the note says so
+export async function setUpExperiment(x: Experiment, undone?: string[]) {
   const before: ExperimentBefore = { changes: [] }
   try {
     const settings = useServer.getState().settings
@@ -144,33 +145,41 @@ export async function setUpExperiment(x: Experiment) {
     toast({ kind: 'error', title: "Couldn't set up the experiment", body: errorMessage(err) })
     return
   }
-  if (!before.changes.length) return
+  const first = undone?.length ? `First put back what the last experiment changed (${undone.join(', ')}). ` : ''
+  if (!before.changes.length) {
+    if (first) toast({ kind: 'info', title: 'Back as it was', body: first.trim() })
+    return
+  }
   const prefs = usePrefs.getState()
   prefs.setExperimentBefore(mergeBefore(prefs.experimentBefore, before))
   toast({
-    kind: 'info', title: `"${x.title}": ${before.changes.join(', ')}`, body: 'Undo, here or above the message box, puts it back.',
+    kind: 'info', title: `"${x.title}": ${before.changes.join(', ')}`, body: `${first}Undo, here or above the message box, puts it back.`,
     action: { label: 'Undo', run: () => void putBack() },
   })
 }
 
-// Undo everything experiments changed, once (kept in your saved preferences until you do)
-export async function putBack() {
+// Undo everything experiments changed, once (kept in your saved preferences until you do).
+// True when it is all back. `quiet`: no note when it worked (the next experiment's note says so)
+export async function putBack(opts?: { quiet?: boolean }): Promise<boolean> {
   const before = usePrefs.getState().experimentBefore
-  if (!before) return
+  if (!before) return true
   try {
     if (before.settings) {
       useServer.getState().setSettings(await api.saveSettings(before.settings))
       usePrefs.getState().setExperimentBefore(before.provider ? { ...before, settings: undefined } : null)
     }
     // switchProvider reports its own error; keep the model part of the way back if it failed
-    if (before.provider && !(await switchProvider(before.provider.provider, before.provider.model))) return
+    if (before.provider && !(await switchProvider(before.provider.provider, before.provider.model))) return false
     usePrefs.getState().setExperimentBefore(null)
+    if (opts?.quiet) return true
     // A conversation that keeps its start keeps the experiment's prompt and descriptions, whatever Undo does
     const kept = !!before.settings && (before.settings.system !== undefined || before.settings.descriptions !== undefined)
       && useSession.getState().frozen && useServer.getState().settings?.apply === 'conversation'
     toast({ kind: 'ok', title: 'Back as it was', body: before.changes.join(', ') + ': undone.'
       + (kept ? " This conversation keeps the experiment's prompt and tool descriptions: start a new conversation to use yours." : '') })
+    return true
   } catch (err) {
     toast({ kind: 'error', title: "Couldn't undo it", body: errorMessage(err) })
+    return false
   }
 }

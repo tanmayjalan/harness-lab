@@ -149,8 +149,13 @@ describe('top bar', () => {
     useUi.setState({ screen: 'compare' })
     wrap(<TopBar narrow={false} />)
     const b = screen.getByRole('button', { name: 'Inspector' })
-    expect(b).toBeDisabled()
+    // F433: aria-disabled, so Tab still reaches it and its reason; a click does nothing
+    expect(b).not.toBeDisabled()
+    expect(b).toHaveAttribute('aria-disabled', 'true')
     expect(b).toHaveAccessibleDescription('The inspector shows model calls in a conversation')
+    const before = usePrefs.getState().inspectorOpen
+    fireEvent.click(b)
+    expect(usePrefs.getState().inspectorOpen).toBe(before)
   })
 
   // F193, F112: the status is in words at every width
@@ -248,10 +253,11 @@ describe('experiment cards', () => {
   beforeEach(() => useServer.setState({ info }))
 
   // F057: a card says what it will do to your setup, and API-only ones are greyed on the mock
-  it('cards say what they change and which need a real API', () => {
+  // F409: no "changes a setting" chip (false on your settings for some cards; the Undo bar says what changed)
+  it('cards say what they will do and which need a real API', () => {
     wrap(<ExperimentGrid onPick={() => {}} disabled={false} />)
-    const cut = screen.getByRole('button', { name: /Cut off mid-sentence/ })
-    expect(cut.textContent).toMatch(/changes a setting \(undoable\)/)
+    expect(screen.queryByText(/changes a setting/)).toBeNull()
+    expect(screen.getByRole('button', { name: /Same chat, new model/ }).textContent).toMatch(/switches model \(undoable\)/)
     expect(screen.getByRole('button', { name: /Watch the loop/ }).textContent).toMatch(/guess first/)
     const cache = screen.getByRole('button', { name: /Second call is cheaper/ })
     expect(cache).toHaveAttribute('aria-disabled', 'true') // F373: still reachable, and says why
@@ -568,7 +574,7 @@ describe('shell accessibility (F309 F310 F310a F310b F310d)', () => {
     fireEvent.click(conv)
     expect(conv).toHaveAttribute('aria-expanded', 'false')
     // before the first model call there is nothing to inspect: the toggle waits
-    expect(screen.getByRole('button', { name: 'Inspector' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Inspector' })).toHaveAttribute('aria-disabled', 'true')
     act(() => usePrefs.setState({ inspectorOpen: true }))
     act(() => useSession.setState({ derived: deriveRuns(declined as HarnessEvent[]) }))
     const insp = screen.getByRole('button', { name: 'Inspector' })

@@ -1,9 +1,9 @@
 // The conversation as a timeline: your message, then each model call as a thin divider with
 // the tools it asked for underneath, then the answer. Click a call or tool to inspect it.
 import { AlertTriangle, ArrowLeftRight, Brain, CircleStop, RotateCcw, Scissors, Shuffle, Sparkles, Undo2 } from 'lucide-react'
-import { memo, useEffect, useRef, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Call, Run, RunModel } from '../../model/derive'
-import { callsOfRun } from '../../model/derive'
+import { callLimitHit, callsOfRun } from '../../model/derive'
 import { cn } from '../../lib/cn'
 import { approx, cost, count, ESTIMATE_TITLE, plural, seconds, tokens, tokensOut } from '../../lib/format'
 import { Explain } from '../../learn/Explain'
@@ -17,7 +17,14 @@ import { usePrefs, useUi } from '../../store/ui'
 import { stopWords } from '../../lib/stopWords'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
+import { inspectCall } from '../../store/selectors'
+import { ONE_COLUMN } from '../../lib/layout'
 import { providerName } from '../composer/providerWords'
+import { storyNumbers, storySteps } from '../../model/story'
+import { StoryRail, Takeaway } from './Story'
+import { experimentRun } from './ExperimentPanels'
+import { findExperiment } from '../../learn/experiments'
+import { useCurrentProvider } from './EmptyState'
 
 type Props = {
   model: RunModel
@@ -81,6 +88,8 @@ export const Timeline = memo(function Timeline({ model, inspectedCallId, live, r
     <div className="space-y-6">
       {model.runs.map((run) => (
         <div key={run.index} className="space-y-3">
+          {/* F433: a heading per message, so a screen reader can jump between them */}
+          <h2 className="sr-only">Message {run.index}</h2>
           {model.switches.filter((s) => s.beforeRun === run.index).map((s) => (
             <SystemNote key={s.seq} icon={<Shuffle className="size-3.5" />} announce
               after={<Explain concept="switch" quiet className="mt-2 text-left" />}>
@@ -161,23 +170,91 @@ type BodyProps = {
   justFailed: boolean // it ran while you watched: a failure is read out at once
 }
 
-function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, live, active, latest, justFailed }: BodyProps) {
+function RunBody({ run, model, first, inspectedCallId, selectedTool, live, active, latest, justFailed }: BodyProps) {
   const calls = callsOfRun(model, run)
   const plan = latestPlan(model, calls)
   const lastCall = calls[calls.length - 1]
   const waiting = active && !live && (model.status === 'waiting_model' || model.status === 'summarising')
   const hintSeen = usePrefs((s) => s.inspectHintSeen)
-  // The call limit: the raw error is the detail when the message is in plain words (older saves: the message)
-  const limitHit = (run.errorDetail ?? run.error ?? '').match(/hit max_turns \((\d+)\)/)
+  const limitHit = callLimitHit(run)
   // Seconds spent waiting for your Allow or Decline in this message
   const waitedForYou = calls.flatMap((c) => c.toolIds.map((id) => model.tools[id]?.approval))
     .reduce((n, a) => n + (a?.askedAt && a.decidedAt ? a.decidedAt - a.askedAt : 0), 0)
+
+  // The story by default; today's full view under "Show details" (open by default in Learning mode, or if you chose so)
+  const alwaysOpen = usePrefs((s) => s.learningMode || s.alwaysDetails)
+  const [picked, setPicked] = useState<boolean | null>(null)
+  const open = picked ?? alwaysOpen
+  const provider = useCurrentProvider()
+  const all = storySteps(model, run)
+  const inFlight = active && all.at(-1)?.kind === 'waiting'
+  const steps = inFlight ? all.slice(0, -1) : all
+  const waitingNode = active && (model.status === 'summarising' || inFlight || (waiting && (!lastCall || !!lastCall.response)))
+    ? <WaitingLine since={inFlight ? lastCall!.startedAt : run.startedAt}
+      text={model.status === 'summarising' ? 'Summarising the older history first…' : 'Waiting for the model…'} />
+    : undefined
+  const finished = run.outcome !== 'running'
+  const detailsId = `details-${run.index}`
+  const x = findExperiment(useUi((s) => s.experimentId))
+  const revealHere = !!x && experimentRun(model, x) === run
 
   return (
     <div className="space-y-2">
       {run.compaction && <Compaction run={run} />}
       {plan && <PlanCard steps={plan} />}
       {run.workflow && <WorkflowCard run={run} model={model} />}
+      <StoryRail steps={steps} active={active} waiting={waitingNode} hint={!hintSeen && run.index === 1} />
+      {active && run.stopping && run.outcome === 'running' && (
+        <SystemNote icon={<CircleStop className="size-3.5 animate-pulse-soft" />} announce>
+          Stopping… a model call that has started can't be cut off, so the harness stops as soon as it returns.
+        </SystemNote>
+      )}
+      {live && <LiveBubble text={live} />}
+      {run.answer && <AnswerBubble run={run} />}
+      {run.cutOff && (
+        <SystemNote icon={<CircleStop className="size-3.5" />}>
+          {run.cutOff === 'max_tokens'
+            ? <>Cut off: the reply reached the longest-reply limit ({count(lastCall?.request.max_tokens ?? 0)} tokens), so it isn't finished. Change the limit in <LimitsLink />.</>
+            : <>Cut off: the model stopped early ({run.cutOff}), so the reply isn't finished.</>}
+        </SystemNote>
+      )}
+      {run.stopping && run.outcome === 'answered' && (
+        <SystemNote icon={<CircleStop className="size-3.5" />}>
+          You pressed Stop during call {lastCall?.turn ?? 1}. A call that has started can't be cut off, so it finished;
+          its reply was the final answer, so there was nothing left to stop.
+        </SystemNote>
+      )}
+      {run.outcome === 'stopped' && (
+        <SystemNote icon={<CircleStop className="size-3.5" />}>
+          Stopped. The conversation so far is kept.
+        </SystemNote>
+      )}
+      {run.outcome === 'error' && limitHit && (
+        <SystemNote icon={<CircleStop className="size-3.5" />}>
+          Stopped: this message reached the limit of {limitHit} model calls.
+          The conversation so far is kept; change the limit in <LimitsLink />.
+        </SystemNote>
+      )}
+      {run.outcome === 'error' && !limitHit && (
+        <Callout tone="bad" live={justFailed} icon={<AlertTriangle className="size-4" />}>
+          <b>The model call failed.</b> The conversation so far is kept. <div className="text-fg/80">{run.error}</div>
+          {run.errorDetail && (
+            <Disclosure className="mt-1 text-xs text-fg/70" summary="The error itself">
+              <code className="break-all">{run.errorDetail}</code></Disclosure>
+          )}
+        </Callout>
+      )}
+      {calls.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 text-xs text-muted">
+          <span data-testid="story-numbers">{finished ? storyNumbers(model, run, run.answer?.provider ?? provider) : ''}</span>
+          <button type="button" aria-expanded={open} aria-controls={detailsId} onClick={() => setPicked(!open)}
+            className="rounded px-1 text-accent focus-ring hover:underline">
+            {open ? 'Hide details ▴' : 'Show details ▾'}
+          </button>
+        </div>
+      )}
+      {open && calls.length > 0 && (
+        <div id={detailsId} data-testid="details" className="space-y-2 rounded-xl border border-dashed border-line-strong bg-sunken/40 px-3 pt-1 pb-2">
       {calls.map((call) => {
         // With the workflow on, each step's calls sit under its name ("Call 1" starts again in each step)
         const step = call.step != null ? run.workflow?.find((st) => st.n === call.step) : undefined
@@ -190,12 +267,9 @@ function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, l
             </div>
           )}
           <CallDivider call={call} selected={call.id === inspectedCallId} multi={model.runs.length > 1}
-            hint={!hintSeen && call.id === model.callOrder[0]} onClick={() => {
-            onSelect(call.id)
-            usePrefs.getState().setInspectorOpen(true) // picking a call is what opens the Inspector
-            // on a narrow screen the inspector is its own view: go there
-            if (typeof matchMedia !== 'undefined' && matchMedia('(max-width: 899px)').matches) useUi.getState().setMobilePane('inspect')
-          }} />
+            hint={!hintSeen && call.id === model.callOrder[0]}
+            // picking a call is what opens the Inspector, and focus goes there (on a narrow screen, its own view)
+            onClick={() => inspectCall(call.id, { focus: true })} />
           {first.history === call.id && <Explain concept="history" quiet />}
           {first.retry === call.id && <Explain concept="retry" quiet />}
           {first.tools_at_once === call.id && <Explain concept="tools_at_once" quiet />}
@@ -212,7 +286,7 @@ function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, l
               {call.toolIds.map((id) => model.tools[id]).filter(Boolean).map((row) => (
                 <ToolRow key={row.id} row={row} selected={selectedTool === row.id}
                   setting={call.request.tools?.find((t) => t.name === row.name)?.permission} loaded={call.request.hooks}
-                  onSelect={() => onSelect(call.id, row.id)} />
+                  onSelect={() => useUi.getState().inspect(call.id, 'tools', { toolId: row.id })} />
               ))}
             </div>
           )}
@@ -234,53 +308,24 @@ function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, l
         </div>
         )
       })}
-      {waiting && (
-        <WaitingLine since={lastCall && !lastCall.response ? lastCall.startedAt : run.startedAt}
-          text={model.status === 'summarising' ? 'Summarising the older history first…'
-            : lastCall && !lastCall.response ? `Waiting for the model (call ${lastCall.turn})…` : 'Waiting for the model…'} />
+          {run.answer && <DetailNumbers run={run} calls={calls} waitedForYou={waitedForYou} />}
+          <AlwaysDetails />
+        </div>
       )}
-      {active && run.stopping && run.outcome === 'running' && (
-        <SystemNote icon={<CircleStop className="size-3.5 animate-pulse-soft" />} announce>
-          Stopping… a model call that has started can't be cut off, so the harness stops as soon as it returns.
-        </SystemNote>
-      )}
-      {live && <LiveBubble text={live} />}
-      {run.answer && <AnswerBubble run={run} calls={calls} waitedForYou={waitedForYou}
-        pinned={latest || calls.some((c) => c.id === inspectedCallId)} />}
-      {run.cutOff && (
-        <SystemNote icon={<CircleStop className="size-3.5" />}>
-          {run.cutOff === 'max_tokens'
-            ? <>Cut off: the reply reached the longest-reply limit ({count(lastCall?.request.max_tokens ?? 0)} tokens), so it isn't finished. Change the limit in <LimitsLink />.</>
-            : <>Cut off: the model stopped early ({run.cutOff}), so the reply isn't finished.</>}
-        </SystemNote>
-      )}
-      {run.stopping && run.outcome === 'answered' && (
-        <SystemNote icon={<CircleStop className="size-3.5" />}>
-          You pressed Stop during call {lastCall?.turn ?? 1}. A call that has started can't be cut off, so it finished;
-          its reply was the final answer, so there was nothing left to stop.
-        </SystemNote>
-      )}
-      {run.outcome === 'stopped' && (
-        <SystemNote icon={<CircleStop className="size-3.5" />} after={<Explain concept="stop" quiet className="mt-2 text-left" />}>
-          Stopped. The conversation so far is kept.
-        </SystemNote>
-      )}
-      {run.outcome === 'error' && limitHit && (
-        <SystemNote icon={<CircleStop className="size-3.5" />} after={<Explain concept="max_turns" quiet className="mt-2 text-left" />}>
-          Stopped: this message reached the limit of {limitHit[1]} model calls.
-          The conversation so far is kept; change the limit in <LimitsLink />.
-        </SystemNote>
-      )}
-      {run.outcome === 'error' && !limitHit && (
-        <Callout tone="bad" live={justFailed} icon={<AlertTriangle className="size-4" />}>
-          <b>The model call failed.</b> The conversation so far is kept. <div className="text-fg/80">{run.error}</div>
-          {run.errorDetail && (
-            <Disclosure className="mt-1 text-xs text-fg/70" summary="The error itself">
-              <code className="break-all">{run.errorDetail}</code></Disclosure>
-          )}
-        </Callout>
-      )}
+      {/* one takeaway after the newest answer; an experiment's own reveal takes its place */}
+      {latest && finished && !revealHere && <Takeaway model={model} run={run} />}
     </div>
+  )
+}
+
+// "Always show details": the choice is kept (also in Settings → Display)
+function AlwaysDetails() {
+  const on = usePrefs((s) => s.alwaysDetails)
+  return (
+    <label className="flex items-center gap-1.5 pt-1 text-xs text-muted">
+      <input type="checkbox" checked={on} onChange={(e) => usePrefs.getState().setAlwaysDetails(e.target.checked)} />
+      Always show details
+    </label>
   )
 }
 
@@ -306,12 +351,16 @@ function CallDivider({ call, selected, onClick, multi, hint }: DividerProps) {
   const trim = call.trimmed && 'count' in call.trimmed && call.trimmed.count ? call.trimmed : null
   const ref = useRef<HTMLButtonElement>(null)
   const following = useUi((s) => s.followLatest)
+  // F426: the line says whether the Inspector beside the chat is showing it (a narrow screen shows it as another view)
+  const wide = !(typeof matchMedia !== 'undefined' && matchMedia(`(max-width: ${ONE_COLUMN - 1}px)`).matches)
+  const besideChat = usePrefs((s) => s.inspectorOpen) && wide
   // Picked by hand ([ ], the size chart): bring it into view in the chat too
   useEffect(() => {
     if (selected && !following) ref.current?.scrollIntoView?.({ block: 'nearest' })
   }, [selected, following])
   return (
     <button ref={ref} type="button" onClick={() => { usePrefs.getState().sawInspectHint(); onClick() }} aria-current={selected ? 'true' : undefined}
+      data-call-id={call.id} aria-controls={besideChat ? 'inspector' : undefined} aria-expanded={wide ? besideChat && selected : undefined}
       title="Inspect this call: what was sent and what came back"
       className={cn('group flex w-full items-center gap-2 rounded py-0.5 text-xs transition-colors focus-ring',
         selected ? 'text-accent' : 'text-muted hover:text-fg')}>
@@ -342,7 +391,7 @@ function CallDivider({ call, selected, onClick, multi, hint }: DividerProps) {
           </span>
         )}
         {call.seconds != null && <span className={SEP}>{seconds(call.seconds)}</span>}
-        {call.tokens.read > 0 && <span className={SEP} title={call.estimated ? ESTIMATE_TITLE : undefined}>{approx(tokens(call.tokens.read), call.estimated)} in / {tokensOut(call.tokens.wrote, call.estimated)} out</span>}
+        {call.tokens.read > 0 && <span className={SEP} title={call.estimated ? ESTIMATE_TITLE : undefined}>{approx(tokens(call.tokens.read), call.estimated)} tokens in / {tokensOut(call.tokens.wrote, call.estimated)} out</span>}
         {hint && <span className={cn(SEP, 'text-accent')}>inspect →</span>}
         </span>
         </span>
@@ -365,25 +414,29 @@ function LimitsLink() {
 const SEP = "before:px-1.5 before:content-['·']"
 
 // `pinned`: the numbers stay in view (the newest message, or the one being inspected); otherwise they show on hover
-function AnswerBubble({ run, calls, waitedForYou, pinned }: { run: Run; calls: Call[]; waitedForYou: number; pinned: boolean }) {
+function AnswerBubble({ run }: { run: Run }) {
+  return (
+    <div className="rounded-2xl rounded-bl-md border border-line bg-panel px-4 py-3 shadow-sm">
+      <h3 className="sr-only">The model's reply</h3>
+      <Markdown text={run.answer!.text} />
+    </div>
+  )
+}
+
+// Today's numbers for the message, inside its details
+function DetailNumbers({ run, calls, waitedForYou }: { run: Run; calls: Call[]; waitedForYou: number }) {
   const info = useServer((s) => s.info)
   const secs = run.endedAt ? run.endedAt - run.startedAt : undefined
+  const est = calls.some((c) => c.estimated)
   return (
-    <div className="group space-y-1">
-      <div className="rounded-2xl rounded-bl-md border border-line bg-panel px-4 py-3 shadow-sm">
-        <span className="sr-only">Model:</span>
-        <Markdown text={run.answer!.text} />
-      </div>
-      {/* Each item carries its dot in front; the first one on every line is pushed past the clipped left
-          edge (the margin, not padding, so the clip is at the text's edge), so no line starts with "·" */}
-      <div className={cn('ml-1 overflow-hidden text-xs text-muted', !pinned && ON_HOVER)}>
-        <div className="-ml-3 flex flex-wrap">
-          <span className={SEP}>{providerName(info?.providers, run.answer!.provider)} · <code>{run.answer!.model}</code></span>
-          <span className={SEP}>{plural(calls.length, 'call')}</span>
-          {secs != null && <span className={SEP}>{seconds(secs)}{waitedForYou >= 1 && ` (${Math.round(waitedForYou)}s waiting for you)`}</span>}
-          {run.tokens.read > 0 && <span className={SEP} title={calls.some((c) => c.estimated) ? ESTIMATE_TITLE : undefined}>{approx(tokens(run.tokens.read), calls.some((c) => c.estimated))} in / {tokensOut(run.tokens.wrote, calls.some((c) => c.estimated))} out</span>}
-          {run.cost > 0 && <span className={SEP}>{cost(run.cost, calls.some((c) => c.estimated))}</span>}
-        </div>
+    <div className="ml-1 overflow-hidden text-xs text-muted">
+      {/* Each item carries its dot in front; the first one on every line is pushed past the clipped left edge */}
+      <div className="-ml-3 flex flex-wrap">
+        <span className={SEP}>{providerName(info?.providers, run.answer!.provider)} · <code>{run.answer!.model}</code></span>
+        <span className={SEP}>{plural(calls.length, 'call')}</span>
+        {secs != null && <span className={SEP}>{seconds(secs)}{waitedForYou >= 1 && ` (${Math.round(waitedForYou)}s waiting for you)`}</span>}
+        {run.tokens.read > 0 && <span className={SEP} title={est ? ESTIMATE_TITLE : undefined}>{approx(tokens(run.tokens.read), est)} tokens in / {tokensOut(run.tokens.wrote, est)} out</span>}
+        {run.cost > 0 && <span className={SEP}>{cost(run.cost, est)}</span>}
       </div>
     </div>
   )
