@@ -1,6 +1,7 @@
 // Explains a concept in full the first time it's on screen; after that, an (i) to open it again.
 // Only one is in full at a time: the others new on the page wait as an (i) with their name until it is closed.
-// The one in full is the earliest, unless the experiment you are following is about one on the page (F413).
+// The one in full is the earliest, unless the experiment you are following is about one on the page (F413);
+// while you follow one, ideas from later tiers wait (named in plain words) until you get there.
 // Being seen is recorded after a moment on screen, but the full text stays put while you read:
 // it shrinks the next time it appears (another conversation, a reload), or when you click ✕.
 import * as Popover from '@radix-ui/react-popover'
@@ -11,7 +12,7 @@ import { cn } from '../lib/cn'
 import { usePrefs, useUi } from '../store/ui'
 import { useSession } from '../store/session'
 import { CONCEPTS, type ConceptKey } from './concepts'
-import { findExperiment } from './experiments'
+import { findExperiment, laterThan } from './experiments'
 import { Callout, IconButton } from '../components/ui'
 
 // The explanations on the page that are new to you, each with an id in the order they appeared. Only the
@@ -33,8 +34,8 @@ export function Explain({ concept, className, inline = false, quiet = false }:
     useWaiting.setState((s) => ({ ids: [...s.ids, { id, concept }].sort((a, b) => a.id - b.id) }))
     return () => useWaiting.setState((s) => ({ ids: s.ids.filter((x) => x.id !== id) }))
   }, [id, concept, isNew, learning])
-  const focus = findExperiment(useUi((s) => s.experimentId))?.concept
-  const turn = useWaiting((s) => (s.ids.find((x) => x.concept === focus) ?? s.ids[0])?.id === id)
+  const experimentId = useUi((s) => s.experimentId)
+  const turn = useWaiting((s) => leadOf(s.ids, experimentId)?.id === id)
   const c = CONCEPTS[concept]
   if (learning || (isNew && turn)) {
     return <ExplainFull concept={concept} className={className} onDismiss={() => setDismissed(true)} />
@@ -46,13 +47,23 @@ export function Explain({ concept, className, inline = false, quiet = false }:
   return <ExplainIcon concept={concept} className={className} label={inline ? undefined : c.term} />
 }
 
+type Waiting = { id: number; concept: ConceptKey }
+// Of the explanations waiting, the one shown in full: the experiment's own idea, else the earliest
+// that isn't from a later tier than the experiment
+function leadOf(ids: Waiting[], experimentId: string | null) {
+  const focus = findExperiment(experimentId)?.concept
+  return ids.find((x) => x.concept === focus) ?? ids.find((x) => !laterThan(x.concept, experimentId))
+}
+
 function ExplainFull({ concept, className, onDismiss }: { concept: ConceptKey; className?: string; onDismiss: () => void }) {
   const c = CONCEPTS[concept]
   const ref = useRef<HTMLDivElement>(null)
   const mark = usePrefs((s) => s.markExplained)
   const learning = usePrefs((s) => s.learningMode)
   const running = useSession((s) => s.running)
-  const more = useWaiting((s) => s.ids.length > 1) // others are waiting for this one to close
+  // others can open once this one closes: said in words, not only in the ✕'s tooltip
+  const experimentId = useUi((s) => s.experimentId)
+  const more = useWaiting((s) => s.ids.filter((x) => x.concept !== concept && !laterThan(x.concept, experimentId)).length > 0)
 
   // Counts as explained once it has been on screen for a few seconds, and not while a reply is
   // running (the view scrolls by itself then, so being on screen doesn't mean it was read)
@@ -77,9 +88,10 @@ function ExplainFull({ concept, className, onDismiss }: { concept: ConceptKey; c
         <Info className="size-3.5 text-muted" aria-hidden /> {c.plain} <span className="font-normal text-muted">({c.term})</span>
       </div>
       {c.long.map((p, i) => <p key={i} className="text-fg/90">{p}</p>)}
+      {!learning && more && <p data-testid="explain-next" className="text-xs text-muted">Close this (✕) and the next new explanation opens.</p>}
       {!learning && (
         <IconButton size="sm" onClick={() => { mark(concept); onDismiss() }} label="Got it, shorten this next time"
-          tip={`Got it. Next time this is an ⓘ (Help → Show all explanations again brings it back)${more ? '. Then the next new one on the page opens in full' : ''}`}
+          tip="Got it. Next time this is an ⓘ (Help → Show all explanations again brings it back)"
           className="absolute top-0.5 right-0.5 text-muted hover:bg-panel hover:text-fg">
           <X className="size-3.5" />
         </IconButton>

@@ -109,7 +109,7 @@ describe('ApprovalDock', () => {
   it('shows what a script file says before you allow it', () => {
     render(<ApprovalDock approval={approval({ tool: 'run_python', input: { path: 'scripts/x.py' }, path: 'scripts/x.py',
       content: '', where: 'C:\\lab\\workspace\\scripts\\x.py', script: { text: "print('hi')", cut: false } })} row={row} />)
-    expect(screen.getByText('C:\\lab\\workspace\\scripts\\x.py')).toBeInTheDocument()
+    expect(screen.getByText('workspace/scripts/x.py')).toBeInTheDocument() // inside the workspace: the short path
     expect(screen.getByText("print('hi')")).toBeInTheDocument()
     expect(screen.getByText(/the file as it is now\. It could still change before it runs/)).toBeInTheDocument()
   })
@@ -120,10 +120,15 @@ describe('ApprovalDock', () => {
     expect(screen.getByText(/The file can't be read \(No such file or directory\), so you can't see what it would run/)).toBeInTheDocument()
   })
 
-  // F279: where a file really goes, from the server, not the prompt's wording
+  // F279: where a file really goes, from the server, not the prompt's wording. Inside the workspace the short
+  // path is enough (the full one adds noise and the user name, in screenshots); outside it, the real place
   it('shows where the file really goes', () => {
-    render(<ApprovalDock approval={approval({ path: 'todo.txt', where: 'C:\\lab\\workspace\\todo.txt' })} row={row} />)
-    expect(screen.getByText('C:\\lab\\workspace\\todo.txt')).toBeInTheDocument()
+    const { unmount } = render(<ApprovalDock approval={approval({ path: 'todo.txt', where: 'C:\\Users\\ada\\lab\\workspace\\todo.txt' })} row={row} />)
+    expect(screen.getByText('workspace/todo.txt')).toBeInTheDocument()
+    expect(screen.queryByText(/ada/)).toBeNull()
+    unmount()
+    render(<ApprovalDock approval={approval({ input: { path: '../x.txt' }, path: '../x.txt', outside: true, setting: 'ask', where: 'C:\\lab\\x.txt' })} row={row} />)
+    expect(screen.getByText('C:\\lab\\x.txt')).toBeInTheDocument()
   })
 
   // F280, F281: outside the workspace, Allow became Ask first; "Always allow" isn't offered, and says why

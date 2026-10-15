@@ -12,6 +12,7 @@ import { PlanSteps } from './PlanCard'
 import { ExplainIcon } from '../../learn/Explain'
 import { Clipped } from '../inspector/ContentBlock'
 import { useUi } from '../../store/ui'
+import { laterThan } from '../../learn/experiments'
 
 function StatusIcon({ status }: { status: Row['status'] }) {
   const cls = 'size-3.5 shrink-0'
@@ -36,6 +37,8 @@ export function ToolRow({ row, selected, onSelect, setting, loaded }:
   const rewrote = hookOf(row, 'after_tool')?.verdict === 'replaced' ? hookOf(row, 'after_tool') : undefined
   const crashed = row.hooks?.find((h) => h.verdict === 'failed')
   const rule = ruleBadge(row)
+  // F413: before hooks are taught (an experiment from an earlier tier), the badge says what happened in plain words
+  const early = useUi((s) => laterThan('hook', s.experimentId))
   const result = row.status === 'ran' && row.result
     ? row.result.chars > 60 ? `${count(row.result.chars)} characters` : row.result.content.replace(/\s+/g, ' ')
     : null
@@ -61,8 +64,9 @@ export function ToolRow({ row, selected, onSelect, setting, loaded }:
           )}
           {/* only when a hook did something: a pass would be noise on every row */}
           {rewrote && (
-            <Tip text="Your after_tool hook replaced the tool's result before the model saw it. Open the row to compare."><span>
-              <Badge tone="warn">rewritten by your hook</Badge></span></Tip>
+            <Tip text={early ? "The harness changed the tool's result before the model saw it. Open the row to compare; the experiment \"Stopped by a hook\" shows how."
+              : "Your after_tool hook replaced the tool's result before the model saw it. Open the row to compare."}><span>
+              <Badge tone="warn">{early ? 'result changed by the harness' : 'rewritten by your hook'}</Badge></span></Tip>
           )}
           {crashed && (
             <Tip text={`Your ${crashed.hook} hook crashed: ${crashed.error}`}><span><Badge tone="bad">your hook crashed</Badge></span></Tip>
