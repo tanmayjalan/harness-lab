@@ -9,10 +9,11 @@ export function tokens(n: number) {
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
 }
 
+// Under $1, two significant figures ($0.0099, $0.012, $0.12), so a cost doesn't lose its detail at $0.01
 export function dollars(n: number) {
   if (n === 0) return '$0'
-  if (n < 0.01) return `$${n.toFixed(4)}`
-  return `$${n.toFixed(2)}`
+  if (n >= 1) return `$${n.toFixed(2)}`
+  return `$${n.toFixed(Math.max(2, 1 - Math.floor(Math.log10(n))))}`
 }
 
 export const plural = (n: number, word: string, many = `${word}s`) => `${count(n)} ${n === 1 ? word : many}`
@@ -56,3 +57,7 @@ export const clock = (when: number) =>
 // The one mark for a figure the provider didn't report but the mock guessed (about 4 characters a token)
 export const ESTIMATE_TITLE = 'The mock guesses: about 4 characters per token'
 export const approx = (value: string, estimated: boolean | undefined) => (estimated ? `≈ ${value}` : value)
+// Tokens out on the mock are a guess that leaves thinking out (claude -p doesn't return its text): at least this many
+export const tokensOut = (n: number, estimated: boolean | undefined) => (estimated ? `≈ ${tokens(n)} or more` : tokens(n))
+// Every cost is worked out from list prices, so always about; on the mock it also leaves thinking out
+export const cost = (n: number, estimated: boolean | undefined) => `≈ ${dollars(n)}${estimated ? ' or more' : ''}`

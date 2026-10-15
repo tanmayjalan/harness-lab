@@ -9,6 +9,12 @@ export function windowFor(info: Info | null | undefined, provider: string | null
   return (model && p?.context_windows?.[model]) || null
 }
 
+// Where a provider's prices (or window sizes) come from, in words: "Anthropic's model list, checked 2026-10-15"
+export function sourceNote(info: Info | null | undefined, provider: string | null | undefined, what: 'prices' | 'windows') {
+  const s = info?.providers.find((x) => x.name === provider)?.source
+  return s ? `${s[what]}, checked ${s.checked}` : null
+}
+
 // The summarising threshold is stored in characters; show it as a share of the model's window
 export const charsToPercent = (chars: number, window: number) => Math.round((chars / CHARS_PER_TOKEN / window) * 1000) / 10
 export const percentToChars = (percent: number, window: number) => Math.round((percent / 100) * window * CHARS_PER_TOKEN)
