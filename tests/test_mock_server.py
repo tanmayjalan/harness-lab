@@ -301,6 +301,25 @@ class EstimateTests(unittest.TestCase):
         self.assertGreater(usage["output_tokens"], 90)
         self.assertNotIn("cache_read_input_tokens", usage)  # the mock never claims cache reads
 
+    def test_the_page_and_the_mock_count_a_request_the_same_way(self):
+        # F378: one request, one size. The page's sentChars is tested against the same file (inspector.test.ts)
+        import pathlib
+        fixture = json.loads((pathlib.Path(__file__).parent.parent / "ui" / "src" / "test" / "fixtures"
+                              / "request_size.json").read_text(encoding="utf-8"))
+        request = {**fixture["api_body"], "messages": fixture["messages"]}
+        self.assertEqual(mock_server.sent_chars(request), fixture["chars"])
+        reply = mock_server.to_api_message({"text": "ok", "tool_calls": []}, "m")
+        self.assertEqual(mock_server.estimate_usage(request, reply)["input_tokens"], fixture["chars"] // 4)
+
+    def test_thinking_is_not_in_the_estimate_but_claude_p_s_own_count_is_kept(self):
+        # F380: the estimate leaves thinking out (its text isn't shown), so claude -p's own count is passed on too
+        with_usage = {**RESULT, "usage": {"output_tokens": 950}}
+        out = stream(said({"type": "thinking", "thinking": "", "signature": "abc"}), with_usage)
+        answer = mock_server.read_reply(out, [])
+        self.assertEqual(answer["claude_output_tokens"], 950)
+        reply = mock_server.to_api_message(answer, "m")
+        self.assertLess(mock_server.estimate_usage(REQUEST, reply)["output_tokens"], 950)
+
 
 def stream(*steps):
     """claude -p's step-by-step output: one JSON object per line."""
@@ -318,7 +337,7 @@ RESULT = {"type": "result", "is_error": False,
 class ReadReplyTests(unittest.TestCase):
     def test_the_structured_reply_is_used_normally(self):
         reply = mock_server.read_reply(stream({"type": "system"}, said({"type": "text", "text": "hi"}), RESULT), ["calculate"])
-        self.assertEqual(reply, {**RESULT["structured_output"], "thinking": [], "overhead_ms": None})
+        self.assertEqual(reply, {**RESULT["structured_output"], "thinking": [], "overhead_ms": None, "claude_output_tokens": None})
 
     def test_a_direct_tool_attempt_becomes_the_tool_request(self):
         # Haiku often calls the harness tool directly; Claude Code refuses; the model gives up
@@ -330,14 +349,14 @@ class ReadReplyTests(unittest.TestCase):
             said({"type": "tool_use", "name": "calculate", "input": {"expression": "retry"}}),  # after: ignored
             RESULT)
         reply = mock_server.read_reply(out, ["calculate", "get_current_time"])
-        self.assertEqual(reply, {"text": "Let me calculate that.", "thinking": [], "overhead_ms": None, "tool_calls": [
+        self.assertEqual(reply, {"text": "Let me calculate that.", "thinking": [], "overhead_ms": None, "claude_output_tokens": None, "tool_calls": [
             {"name": "calculate", "input": {"expression": "2450*17/100"}},
             {"name": "get_current_time", "input": {"timezone": "Asia/Tokyo"}}]})
 
     def test_its_own_structured_output_call_is_not_a_harness_tool(self):
         out = stream(said({"type": "tool_use", "name": "StructuredOutput", "input": {"text": "x"}}), RESULT)
         self.assertEqual(mock_server.read_reply(out, ["calculate"]),
-                         {**RESULT["structured_output"], "thinking": [], "overhead_ms": None})
+                         {**RESULT["structured_output"], "thinking": [], "overhead_ms": None, "claude_output_tokens": None})
 
     def test_claude_p_start_up_time_is_measured(self):
         timed = {**RESULT, "duration_ms": 9000, "duration_api_ms": 6500}

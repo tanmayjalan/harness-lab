@@ -296,6 +296,25 @@ class HarnessTests(unittest.TestCase):
         request = next(d for k, d in events if k == "request")
         self.assertEqual((request["cache"], request["thinking"]), (True, None))
 
+    def test_the_request_event_records_exactly_the_body_sent(self):
+        # F377: the page shows this record, so it must be the real request (tool shapes, strict, cache marks), not a rebuild
+        import copy
+        sent, events = [], []
+        client = FakeClient(reply("tool_use", tool_use("t1", "roll_dice", sides=6)), reply("end_turn", text("ok")))
+        client.create = lambda **kw: (sent.append(copy.deepcopy(kw)), client.replies.pop(0))[1]
+        strict_tool = {"name": "pick", "description": "d", "strict": True,
+                       "input_schema": {"type": "object", "properties": {}, "additionalProperties": False}}
+        self.run_agent(client, cache=True, tools=[*tools.TOOLS, strict_tool],
+                       thinking={"style": "adaptive", "effort": "low"},
+                       on_event=lambda kind, **d: events.append((kind, copy.deepcopy(d))))
+        recorded = [d for k, d in events if k == "request"]
+        self.assertEqual(len(recorded), len(sent))
+        for r, body in zip(recorded, sent):
+            self.assertEqual({**r["api_body"], "messages": r["messages"]}, body)
+            self.assertFalse(r["streamed"])
+        self.assertTrue(recorded[0]["api_body"]["tools"][-1]["strict"])
+        self.assertEqual(recorded[0]["api_body"]["tools"][-1]["cache_control"], {"type": "ephemeral"})
+
     def test_a_tool_list_given_as_a_function_is_read_again_before_each_call(self):
         # how the list can change between calls (find_tool, features/tool_search.py); caching marks the list sent
         seen, lists = [], [[{"name": "a"}], [{"name": "a"}, {"name": "b"}]]

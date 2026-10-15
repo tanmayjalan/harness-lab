@@ -1,9 +1,10 @@
 // Evals: the same fixed questions, run the same way, to tell whether a change made things
 // better or worse. Pass rates over several runs, and a score over time.
-import { CheckCircle2, ClipboardCheck, CircleDashed, Play, Search, TriangleAlert, XCircle } from 'lucide-react'
+import { CheckCircle2, ClipboardCheck, CircleDashed, Download, Play, Search, TriangleAlert, XCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { EvalCase, EvalRun } from '../../api/types'
 import { cn } from '../../lib/cn'
+import { downloadJson } from '../../lib/download'
 import { approx, ESTIMATE_TITLE, plural, roughly, seconds, tokens } from '../../lib/format'
 import { ExplainIcon } from '../../learn/Explain'
 import { useEvals } from '../../store/evals'
@@ -52,8 +53,10 @@ export function EvalsScreen() {
           <h1 className="flex items-center gap-2 text-lg font-semibold"><ClipboardCheck className="size-5 text-accent" /> Evals <ExplainIcon concept="eval" /></h1>
           <p className="text-sm text-muted">
             A fixed set of questions, each checked for the right tools and answer. Run them before and after a change to
-            the prompt, a tool or the model: if the pass rate drops, the change made things worse. Models vary from run to
-            run, so run each question a few times. Tools set to Ask first don't run (nobody can be asked); tools set to Block are refused.
+            the prompt, a tool or the model, and compare the pass rates. Models vary from run to run, so a drop of one or two
+            runs can be chance, above all with one run per question: run each question 3 or 5 times, and run the same setup
+            twice to see how far the score moves with no change at all. Only a drop bigger than that says the change made
+            things worse. Tools set to Ask first don't run (nobody can be asked); tools set to Block are refused.
           </p>
         </div>
 
@@ -88,7 +91,7 @@ export function EvalsScreen() {
             </label>
             <p className="pl-6 text-xs text-muted">
               {changed.length ? `Different from the defaults now: ${changed.join(', ')}.` : 'Nothing differs from the defaults now.'}
-              {' '}(The model is picked above.)
+              {' '}Every setting applies, and your hooks run, as in Compare. (The model is picked above.)
             </p>
           </div>
           <div className="space-y-1 text-sm">
@@ -100,6 +103,10 @@ export function EvalsScreen() {
               <ExplainIcon concept="judge" />
             </div>
             <p className="pl-6 text-xs text-muted">Off: they pass on tool use alone.</p>
+            <p className="pl-6 text-xs text-muted">
+              The judge sees only the question, its criteria and the final answer (not the tools or what they returned),
+              grades each answer once, and is always the mock. Checks of the answer's text match a whole word or number.
+            </p>
             {e.judge && tested === judgeModel && (
               <p className="pl-6 text-xs text-muted">The judge is the same model as the one being tested: it may go easy on its own answers.</p>
             )}
@@ -173,8 +180,11 @@ function Questions() {
   )
 }
 
-// What a run was, for the chart's tooltip and the grouping of comparable runs
-const kindOf = (r: EvalRun) => `${r.provider}|${r.model}|${r.only ?? ''}|${r.judge ?? ''}|${r.use_my_settings}|${r.incomplete ? 'stopped' : ''}`
+// What a run was, for the chart's tooltip and the grouping of comparable runs: the same model, the same questions
+// checked the same way (their fingerprint; older rounds only have the filter), the same judge and as many runs per
+// question. The settings aren't part of it: before and after a settings change is the comparison to make
+const kindOf = (r: EvalRun) =>
+  `${r.provider}|${r.model}|${r.questions_hash ?? `only:${r.only ?? ''}`}|${r.judge ?? ''}|${r.repeat}|${r.incomplete ? 'stopped' : ''}`
 const describe = (r: EvalRun) => [
   new Date(r.time * 1000).toLocaleString(), `${r.label} · ${r.model}`, `${r.passed} of ${plural(r.total, 'run')} passed`,
   `${plural(r.repeat, 'run')} per question`,
@@ -262,8 +272,15 @@ export function ScoreChart({ runs, selected, onPick }: { runs: EvalRun[]; select
               }}>
               <title>{describe(r)}</title>
               <circle cx={x} cy={ys(r)} r="12" fill="transparent" />
-              <circle cx={x} cy={ys(r)} r={r.id === selected ? 6 : 4} fill={r.id === selected ? 'var(--accent)' : 'var(--panel)'}
-                stroke={same ? 'var(--accent)' : 'var(--muted)'} strokeWidth="1.5" strokeDasharray={same ? undefined : '2 2'} />
+              {r.use_my_settings ? (
+                // your settings: a square, so before and after a settings change can be told apart on one line
+                <rect x={x - (r.id === selected ? 6 : 4)} y={ys(r) - (r.id === selected ? 6 : 4)} width={r.id === selected ? 12 : 8}
+                  height={r.id === selected ? 12 : 8} data-mark="mine" fill={r.id === selected ? 'var(--accent)' : 'var(--panel)'}
+                  stroke={same ? 'var(--accent)' : 'var(--muted)'} strokeWidth="1.5" strokeDasharray={same ? undefined : '2 2'} />
+              ) : (
+                <circle cx={x} cy={ys(r)} r={r.id === selected ? 6 : 4} fill={r.id === selected ? 'var(--accent)' : 'var(--panel)'}
+                  stroke={same ? 'var(--accent)' : 'var(--muted)'} strokeWidth="1.5" strokeDasharray={same ? undefined : '2 2'} />
+              )}
               {label.shown && (
                 <text x={x} y={ys(r) + (ys(r) < pad + 10 ? 18 : -10)} textAnchor={label.anchor} className="chart-text" fill="var(--muted)">
                   {label.words}
@@ -274,8 +291,9 @@ export function ScoreChart({ runs, selected, onPick }: { runs: EvalRun[]; select
         })}
       </svg>
       <p className="text-xs text-muted">
-        The line joins runs like the latest one (same provider and model, questions, judge and settings choice); dashed
-        points are other kinds of run, so their scores aren't comparable. A run of one per question is the noisiest.
+        The line joins rounds like the latest one: the same provider and model, the same questions checked the same way,
+        the same judge and as many runs per question. Circles are the default settings, squares your settings. Dashed
+        points are other kinds of round, so their scores aren't comparable. One run per question is the noisiest.
       </p>
     </section>
   )
@@ -312,6 +330,10 @@ export function Results() {
           {' '}· {r.use_my_settings ? (r.setup.length ? `your settings: ${r.setup.join(', ')}` : 'your settings (all default)') : 'default settings'}
           {r.time ? ` · ${new Date(r.time * 1000).toLocaleString()}` : ''}
         </span>
+        <Button size="sm" variant="ghost" title="The round's questions, answers, checks, setup and judge, as a JSON file"
+          onClick={() => downloadJson(`harness-eval-${r.id ?? 'round'}.json`, r)}>
+          <Download className="size-3.5" /> Download as JSON
+        </Button>
       </div>
       {r.incomplete && <p className="text-sm text-warn">This round is incomplete: stopped before every question ran.</p>}
       {!!r.unjudged && (

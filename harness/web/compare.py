@@ -14,11 +14,51 @@ import uuid
 
 from harness import paths
 from harness.core import loop, providers, tools
-from harness.features import subagents, tool_search, workflow
+from harness.features import hooks as hooks_file
+from harness.features import lab_settings, memory, skills, subagents, tool_search, trimming, workflow
 from harness.web import conversations
 from harness.web.jsonify import to_json
 
 HISTORY = paths.DATA / "compare"  # every comparison you ran, to look at again
+
+
+def setup(name, model, settings, *, client, base_tools=tools.TOOLS, default_permission=loop.default_permission,
+          run=tools.run_tool, tool_source=lambda tool: "built in", is_mcp=lambda tool: False, facts=(),
+          history=(), use_hooks=True, label=None, allow_ask=False):
+    """Everything one run needs, from a provider, a model and your settings: the arguments for run_one, plus its
+    label and a `config` snapshot of what was in effect. Compare, Re-run and Evals all build their runs here, so a
+    setup means the same thing on every screen: prompt, descriptions, permissions, skills, thinking, caching,
+    limits, tools at once, the busy-service practice, the workflow, run code, the office tools and (with
+    `use_hooks`) your hooks in config/my_hooks.py. `facts`: the facts about you to put in the prompt.
+    `is_mcp`: tools from another program (MCP), which never run alongside others."""
+    p = providers.PROVIDERS[name]
+    system = memory.system_prompt(lab_settings.system_prompt(settings, loop.SYSTEM), list(facts))
+    found = skills.load_all()
+    system = skills.system_prompt(system, settings.get("skills"), found)
+    offered = lab_settings.offered_tools(settings, base_tools)
+    tool_list = providers.tools_for(name, [*offered, skills.SKILL_TOOL] if skills.offers_tool(settings.get("skills"), found)
+                                    else offered)
+    permission = lab_settings.permission(settings, default_permission)
+    trim = settings.get("trim") or {}
+    prepare = None
+    if history and trim.get("enabled") and name != "anthropic":  # trimming only matters with a history
+        prepare = lambda msgs, k=trim.get("keep_last", 2): trimming.trim(msgs, keep_last=k)[0]  # noqa: E731
+    may = lab_settings.at_once(settings)
+    max_tokens, max_turns = lab_settings.limits(settings)
+    return {"label": str(label or p["label"])[:60], "provider": name, "model": model, "client": client,
+            "system": system, "tools": tool_list, "permission": permission, "run": run,
+            "hooks": hooks_file.load() if use_hooks else None,
+            "cost": lambda usage, n=name, m=model: providers.cost(n, usage, m),
+            "history": history, "prepare": prepare,
+            "thinking": lab_settings.thinking_spec(settings, providers.thinking_style(name)),
+            "cache": lab_settings.caching(settings), "allow_ask": allow_ask,
+            "max_tokens": max_tokens, "max_turns": max_turns,
+            "at_once": None if may is None else (lambda tool: may(tool) and not is_mcp(tool)),
+            "busy": lab_settings.busy(settings), "workflow_on": lab_settings.workflow(settings),
+            "extra_tools": lab_settings.extra_tools(settings),  # (run_one starts a Toolbox for each run)
+            "config": lab_settings.snapshot(settings, provider=name, label=p["label"], model=model, system=system,
+                                            facts_shared=len(memory.shared(list(facts))), tools=tool_list,
+                                            permission=permission, source=tool_source)}
 
 
 def run_one(client, model, text, system, tools, permission, cost=lambda usage: None, run=tools.run_tool,

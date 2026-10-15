@@ -5,12 +5,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { RequestEvent } from '../../api/types'
 import type { Call, RunModel } from '../../model/derive'
 import { callsCsv, conversationReport } from '../../model/report'
-import { windowFor } from '../../model/context'
-import { breakdown, callTiming, callView, receivedLine, sentChars, tokenSeries, windowUsed, type CallView, type Part, type Timing } from '../../model/inspector'
+import { sourceNote, windowFor } from '../../model/context'
+import { breakdown, callTiming, callView, receivedLine, sentBody, sentChars, tokenSeries, windowUsed, type CallView, type Part, type Timing } from '../../model/inspector'
 import { ruleBadge } from '../../model/permission'
 import { cn } from '../../lib/cn'
 import { useShownInspectorWidth } from '../../lib/layout'
-import { approx, count, dollars, plural, pretty, seconds, tokens } from '../../lib/format'
+import { approx, cost, count, plural, pretty, seconds, tokens, tokensOut } from '../../lib/format'
 import { Explain, ExplainIcon } from '../../learn/Explain'
 import { stopWords } from '../../lib/stopWords'
 import type { ConceptKey } from '../../learn/concepts'
@@ -254,6 +254,9 @@ function SummaryTab({ view, model }: { view: CallView; model: RunModel }) {
     return p?.model_prices?.[call.request.model] ?? p?.price ?? null
   })
   const providers = useServer((s) => s.info?.providers)
+  const priceSource = useServer((s) => sourceNote(s.info, cfg?.provider, 'prices'))
+  const timing = call.response ? callTiming(model, call) : null
+  const claudeOut = call.response?.usage?.mock_claude_output_tokens
   const discount = rates && rates.input ? Math.round((1 - rates.cached / rates.input) * 100) : null
 
   return (
@@ -276,14 +279,16 @@ function SummaryTab({ view, model }: { view: CallView; model: RunModel }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <Stat label="Model time">{call.seconds != null ? seconds(call.seconds) : call.failed ? '–' : '…'}</Stat>
-        <Stat label="Cost (this call)">{call.cost != null ? approx(dollars(call.cost), call.estimated) : '–'}</Stat>
+        <Stat label="Reply time" hint={timing?.overhead ? `the model, and at least ${seconds(timing.overhead)} starting claude -p` : undefined}>
+          {timing?.model != null ? seconds(timing.model) : call.failed ? '–' : '…'}</Stat>
+        <Stat label="Cost (this call)">{call.cost != null ? cost(call.cost, call.estimated) : '–'}</Stat>
         {call.tokens.read || call.tokens.wrote ? (
           <>
             <Stat label="Tokens in"
               hint={[call.tokens.cached && `${tokens(call.tokens.cached)} from cache`, call.tokens.written && `${tokens(call.tokens.written)} written to cache`]
                 .filter(Boolean).join(' · ') || undefined}>{approx(tokens(call.tokens.read), call.estimated)}</Stat>
-            <Stat label="Tokens out">{approx(tokens(call.tokens.wrote), call.estimated)}</Stat>
+            <Stat label="Tokens out" hint={claudeOut ? `claude -p counted ${count(claudeOut)}, thinking included` : undefined}>
+              {tokensOut(call.tokens.wrote, call.estimated)}</Stat>
           </>
         ) : (
           <div className="col-span-2 flex items-center rounded-md bg-sunken px-2.5 text-xs text-muted">
@@ -292,9 +297,15 @@ function SummaryTab({ view, model }: { view: CallView; model: RunModel }) {
           </div>
         )}
       </div>
-      {call.estimated && <p className="text-xs text-muted">The mock counts about 4 characters per token, so these numbers are estimates.</p>}
+      {call.estimated && <p className="text-xs text-muted">The mock counts about 4 characters per token, so these numbers are estimates. It can't see the model's thinking, so tokens out and cost are at least what's shown.</p>}
+      {call.cost != null && rates && (
+        <p className="text-xs text-muted">
+          Cost worked out at ${rates.input.toFixed(2)} in / ${rates.output.toFixed(2)} out per million tokens{priceSource && ` (${priceSource})`}.
+          {call.estimated && ' Not charged: the mock runs on your Claude Code plan.'}
+        </p>
+      )}
       <WindowMeter call={call} previous={previous} />
-      {call.response && <TimeBar t={callTiming(model, call)} />}
+      {timing && <TimeBar t={timing} />}
       {call.retries?.map((r) => (
         <p key={r.attempt} className="text-xs text-warn">
           {r.status ? `The service said ${r.status} (${r.reason}${r.simulated ? '; simulated by the practice switch' : ''})`
@@ -334,7 +345,7 @@ function SummaryTab({ view, model }: { view: CallView; model: RunModel }) {
             </li>
           )}
           <li>
-            Thinking: <b>{thinkingLabel(call.request)}</b> <ExplainIcon concept="thinking" />
+            Thinking: <b>{thinkingLabel(call.request, call.thought !== undefined)}</b> <ExplainIcon concept="thinking" />
             {' '}· Caching: {call.request.cache ? <b>on</b> : 'off'} <ExplainIcon concept="caching" />
           </li>
           {call.request.cache && call.response && (
@@ -383,9 +394,10 @@ function sentThinking(r: RequestEvent) {
   return (t as RequestEvent['thinking']) ?? null
 }
 
-function thinkingLabel(r: RequestEvent) {
+function thinkingLabel(r: RequestEvent, thought: boolean) {
   const t = sentThinking(r)
-  if (!t) return 'default (not asked for)'
+  // Some models (Opus 5.5) think whatever is asked, so say what came back, not only what was asked for
+  if (!t) return thought ? 'not asked for, but the model thought anyway' : 'not asked for'
   if (t.type === 'adaptive') return `adaptive, effort ${r.output_config?.effort ?? 'medium'}`
   return `on, up to ${count(t.budget_tokens)} tokens`
 }
@@ -399,7 +411,7 @@ function SentTab({ view }: { view: CallView }) {
   const newTools = view.previous?.request.tools ? (call.request.tools ?? []).map((t) => t.name).filter((n) => !before.has(n)) : []
   return (
     <div className="space-y-5">
-      <p className="text-xs text-muted">Exactly what the harness sent: the system prompt, the tools offered and the messages list; green is new since the previous call.</p>
+      <p className="text-xs text-muted">What the harness sent: the system prompt, the tools offered and the messages list; green is new since the previous call. The Raw tab has the exact request body.</p>
       <Section title="System prompt" aside={<span className="flex gap-2">
         {call.request.facts > 0 && <ExplainIcon concept="facts" />}<ExplainIcon concept="system_prompt" />
       </span>}>
@@ -495,33 +507,24 @@ function RawTab({ call }: { call: Call }) {
       toast({ kind: 'error', title: "Couldn't copy", body: 'Your browser refused clipboard access.' })
     }
   }
-  const schemas = useServer((s) => s.settings?.tools)
-  const r = call.request
-  // Exactly the body the harness sends to the model's API (harness/core/loop.py: client.messages.create)
-  // (with caching on, the system prompt goes as a block and the last tool carries a cache mark;
-  // the messages in the event already carry theirs)
-  const mark = { type: 'ephemeral' }
-  const sentTools = r.tools ?? []
-  const apiRequest = {
-    model: r.model,
-    max_tokens: r.max_tokens ?? 16000,
-    ...(sentThinking(r) ? { thinking: sentThinking(r) } : {}),
-    ...(r.output_config ? { output_config: r.output_config } : {}),
-    system: r.cache ? [{ type: 'text', text: r.system, cache_control: mark }] : r.system,
-    tools: sentTools.map((t, i) => ({
-      name: t.name, description: t.description,
-      input_schema: schemas?.find((s) => s.name === t.name)?.input_schema ?? '(not loaded)',
-      ...(r.cache && i === sentTools.length - 1 ? { cache_control: mark } : {}),
-    })),
-    messages: r.messages,
-  }
+  // Exactly the body the loop sent (harness/core/loop.py records it with the request): tool definitions,
+  // "strict" and cache marks as they went. Conversations saved before it was recorded don't have it
+  const apiRequest = sentBody(call)
   const apiResponse = call.response
     ? { stop_reason: call.response.stop_reason, content: call.response.content, usage: call.response.usage }
     : null
-  const parts: [string, string, ReactNode, unknown, number][] = [
-    ['api-request', 'Sent to the model', <>The API request body, rebuilt from the harness's record (tool input shapes come from your current settings): the <b>whole conversation</b> goes every call, with the system prompt and every tool description.</>, apiRequest, 1],
-    ['api-response', 'Came back from the model', 'The API reply: why it stopped, what it wrote or asked for, and how many tokens it used.', apiResponse, 1],
-    ['events', "The harness's own record (not sent)", <>The events the harness logged for this call. Fields like <code>seq</code>, <code>time</code>, <code>msg</code>, <code>config</code> and <code>provider</code> are its bookkeeping, for this page: the model never sees them.</>, { request: call.request, response: call.response ?? null }, 0],
+  const onMock = call.request.config?.provider === 'mock' || call.estimated
+  const sentHelp = apiRequest ? <>
+    The request body exactly as the harness sent it{call.request.streamed && <>, plus <code>"stream": true</code></>}: the <b>whole
+    conversation</b> goes every call, with the system prompt and every tool's full definition.
+    {onMock && <> On the mock, the model doesn't get it in this form: the mock turns it into one text prompt for{' '}
+      <code>claude -p</code> (system prompt and tools written out as text, the reply forced into a fixed shape, and tool
+      ids made up). See Help → what the mock can't show.</>}
+  </> : "This conversation was saved before the harness kept the exact request, so it can't be shown. The Sent tab shows what was recorded: the system prompt, the tool names and descriptions, and the messages."
+  const parts: [string, string, ReactNode, unknown, number, number | null][] = [
+    ['api-request', 'Sent to the model', sentHelp, apiRequest, 1, apiRequest ? sentChars(call) : null],
+    ['api-response', 'Came back from the model', 'The API reply: why it stopped, what it wrote or asked for, and how many tokens it used.', apiResponse, 1, null],
+    ['events', "The harness's own record (not sent)", <>The events the harness logged for this call. Fields like <code>seq</code>, <code>time</code>, <code>msg</code>, <code>config</code> and <code>provider</code> are its bookkeeping, for this page: the model never sees them.</>, { request: call.request, response: call.response ?? null }, 0, null],
   ]
   return (
     <div className="space-y-3">
@@ -530,10 +533,10 @@ function RawTab({ call }: { call: Call }) {
         <Button size="sm" variant="ghost" onClick={() => setCommand({ n: command.n + 1, open: true })}><ChevronsUpDown className="size-3.5" /> Open all</Button>
         <Button size="sm" variant="ghost" onClick={() => setCommand({ n: command.n + 1, open: false })}><ChevronsDownUp className="size-3.5" /> Fold all</Button>
       </div>
-      {parts.map(([key, label, help, value, depth]) => (
+      {parts.map(([key, label, help, value, depth, size]) => (
         <section key={key} className="space-y-1 rounded-md border border-line p-2">
           <div className="flex items-center justify-between gap-2 text-xs">
-            <span className="font-medium">{label} {value !== null && <span className="font-normal text-muted">· {count(pretty(value).length)} characters</span>}</span>
+            <span className="font-medium">{label} {size !== null && <span className="font-normal text-muted">· {count(size)} characters of system prompt, tools and messages (counted as in the Summary)</span>}</span>
             {value !== null && (
               <Button size="sm" variant="ghost" onClick={() => copy(key, value)}>
                 <Copy className="size-3.5" /> <span role="status">{copied === key ? 'Copied' : 'Copy'}</span>
@@ -541,7 +544,7 @@ function RawTab({ call }: { call: Call }) {
             )}
           </div>
           <p className="text-xs text-muted">{help}</p>
-          {value === null ? <p className="text-xs text-muted">Nothing yet.</p>
+          {value === null ? (key === 'api-request' ? null : <p className="text-xs text-muted">Nothing yet.</p>)
             : <JsonTree key={`${call.id}-${key}`} value={value} command={command} openDepth={depth} label={label} />}
         </section>
       ))}
@@ -586,7 +589,7 @@ function TimeBar({ t }: { t: Timing }) {
   const model = Math.max(0, (t.model ?? 0) - (t.overhead ?? 0))
   const parts = [
     { key: 'model', label: 'the model replying', s: model, colour: TIME_COLOURS.model },
-    { key: 'overhead', label: 'starting claude -p (the mock only)', s: t.overhead ?? 0, colour: TIME_COLOURS.overhead },
+    { key: 'overhead', label: 'starting claude -p (the mock only; at least)', s: t.overhead ?? 0, colour: TIME_COLOURS.overhead },
     { key: 'retrying', label: 'waiting to try again', s: t.retrying, colour: TIME_COLOURS.retrying },
     { key: 'tools', label: 'running its tools', s: t.tools, colour: TIME_COLOURS.tools },
     { key: 'waited', label: 'waiting for you', s: t.waited, colour: TIME_COLOURS.waited },
@@ -630,13 +633,13 @@ function ConversationCard({ model }: { model: RunModel }) {
     <div className="space-y-1">
     <Disclosure className="rounded-lg border border-line bg-sunken/60 px-3 py-2 text-sm" summaryClassName="font-medium" summary={<>
       This conversation <span className="font-normal text-muted">· {plural(r.messages, 'message')}, {plural(r.calls, 'model call')}
-        {r.tokensIn > 0 && `, ${approx(tokens(r.tokensIn), r.estimated)} tokens in`}{r.cost != null && `, ${dollars(r.cost)}`}</span>
+        {r.tokensIn > 0 && `, ${approx(tokens(r.tokensIn), r.estimated)} tokens in`}{r.cost != null && `, ${cost(r.cost, r.estimated)}`}</span>
     </>}>
       <ul className="mt-2 space-y-0.5 text-xs">
         <li>{plural(r.calls, 'model call')}{r.helperCalls > 0 && ` + ${plural(r.helperCalls, 'helper call')}`}</li>
         <li>Tools: {Object.entries(r.toolRuns).map(([k, n]) => `${n} ${OUTCOME_WORDS[k] ?? k}`).join(', ') || 'none'}</li>
-        <li>Time: {seconds(r.modelSeconds)} model, {seconds(r.toolSeconds)} tools{r.waitedSeconds > 0 && `, ${seconds(r.waitedSeconds)} waiting for you`}</li>
-        {r.tokensIn > 0 && <li>Tokens: {approx(tokens(r.tokensIn), r.estimated)} in, {tokens(r.tokensOut)} out{r.cost != null && ` · ${dollars(r.cost)}`}</li>}
+        <li>Time: {seconds(r.modelSeconds)} waiting for replies, {seconds(r.toolSeconds)} tools{r.waitedSeconds > 0 && `, ${seconds(r.waitedSeconds)} waiting for you`}</li>
+        {r.tokensIn > 0 && <li>Tokens: {approx(tokens(r.tokensIn), r.estimated)} in, {tokensOut(r.tokensOut, r.estimated)} out{r.cost != null && ` · ${cost(r.cost, r.estimated)}`}</li>}
         {r.nextCallAtLeast > 0 && (
           <li className="text-muted">Your next message's first call will send at least {tokens(r.nextCallAtLeast)} tokens: everything so far goes again.</li>
         )}
@@ -653,6 +656,7 @@ function ConversationCard({ model }: { model: RunModel }) {
 // How full the model's context window was on this call
 function WindowMeter({ call, previous }: { call: Call; previous: Call | null }) {
   const window = useServer((s) => windowFor(s.info, call.request.config?.provider, call.request.model))
+  const source = useServer((s) => sourceNote(s.info, call.request.config?.provider, 'windows'))
   if (!window) return null
   const counted = call.tokens.read > 0
   const { used, atLeast } = windowUsed(call, previous)
@@ -670,6 +674,7 @@ function WindowMeter({ call, previous }: { call: Call; previous: Call | null }) 
         aria-label="How much of the model's context window this call used">
         <div className={cn('h-full', share > 0.8 ? 'bg-bad' : share > 0.5 ? 'bg-warn' : 'bg-accent')} style={{ width: `${Math.min(100, Math.max(0.5, pct))}%` }} />
       </div>
+      {source && <p className="text-xs text-muted">Window size from {source}.</p>}
       <Explain concept="context_window" quiet />
     </figure>
   )
