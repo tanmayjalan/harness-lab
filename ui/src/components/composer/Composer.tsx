@@ -3,7 +3,7 @@ import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowUp, Check, ChevronDown, Square } from 'lucide-react'
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { cn } from '../../lib/cn'
-import { dollars, tokens } from '../../lib/format'
+import { cost, dollars, tokens } from '../../lib/format'
 import { send, stop, switchProvider } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
@@ -173,7 +173,7 @@ function Totals() {
     <Tip text={estimateText}>
       <span className="text-xs text-muted tabular-nums">
         <span className="sr-only">{estimateText}</span>
-        {d.tokensEstimated && '≈ '}{tokens(d.tokens.read)} tokens in · {tokens(d.tokens.wrote)} out{d.costKnown && ` · ${dollars(d.cost)}`}
+        {d.tokensEstimated && '≈ '}{tokens(d.tokens.read)} tokens in · {tokens(d.tokens.wrote)}{d.tokensEstimated && ' or more'} out{d.costKnown && ` · ${d.tokensEstimated ? `${dollars(d.cost)} or more` : cost(d.cost, false)}`}
       </span>
     </Tip>
   )

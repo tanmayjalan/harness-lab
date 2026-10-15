@@ -5,7 +5,7 @@ import { memo, useEffect, useRef, type ReactNode } from 'react'
 import type { Call, Run, RunModel } from '../../model/derive'
 import { callLimitHit, callsOfRun } from '../../model/derive'
 import { cn } from '../../lib/cn'
-import { approx, count, dollars, ESTIMATE_TITLE, plural, seconds, tokens } from '../../lib/format'
+import { approx, cost, count, ESTIMATE_TITLE, plural, seconds, tokens, tokensOut } from '../../lib/format'
 import { Explain } from '../../learn/Explain'
 import type { ConceptKey } from '../../learn/concepts'
 import { Markdown } from '../Markdown'
@@ -341,7 +341,7 @@ function CallDivider({ call, selected, onClick, multi, hint }: DividerProps) {
           </span>
         )}
         {call.seconds != null && <span className={SEP}>{seconds(call.seconds)}</span>}
-        {call.tokens.read > 0 && <span className={SEP} title={call.estimated ? ESTIMATE_TITLE : undefined}>{approx(tokens(call.tokens.read), call.estimated)} tokens in / {tokens(call.tokens.wrote)} out</span>}
+        {call.tokens.read > 0 && <span className={SEP} title={call.estimated ? ESTIMATE_TITLE : undefined}>{approx(tokens(call.tokens.read), call.estimated)} tokens in / {tokensOut(call.tokens.wrote, call.estimated)} out</span>}
         {hint && <span className={cn(SEP, 'text-accent')}>inspect →</span>}
         </span>
         </span>
@@ -380,8 +380,8 @@ function AnswerBubble({ run, calls, waitedForYou, pinned }: { run: Run; calls: C
           <span className={SEP}>{providerName(info?.providers, run.answer!.provider)} · <code>{run.answer!.model}</code></span>
           <span className={SEP}>{plural(calls.length, 'call')}</span>
           {secs != null && <span className={SEP}>{seconds(secs)}{waitedForYou >= 1 && ` (${Math.round(waitedForYou)}s waiting for you)`}</span>}
-          {run.tokens.read > 0 && <span className={SEP} title={calls.some((c) => c.estimated) ? ESTIMATE_TITLE : undefined}>{approx(tokens(run.tokens.read), calls.some((c) => c.estimated))} tokens in / {tokens(run.tokens.wrote)} out</span>}
-          {run.cost > 0 && <span className={SEP}>{dollars(run.cost)}</span>}
+          {run.tokens.read > 0 && <span className={SEP} title={calls.some((c) => c.estimated) ? ESTIMATE_TITLE : undefined}>{approx(tokens(run.tokens.read), calls.some((c) => c.estimated))} tokens in / {tokensOut(run.tokens.wrote, calls.some((c) => c.estimated))} out</span>}
+          {run.cost > 0 && <span className={SEP}>{cost(run.cost, calls.some((c) => c.estimated))}</span>}
         </div>
       </div>
     </div>

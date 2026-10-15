@@ -1,10 +1,11 @@
 // Same message, different setups, side by side: what changed, what each did, and what it cost.
-import { ArrowDown, ArrowLeftRight, ArrowUp, Ban, ChevronDown, History, Info, Play, Plus, RotateCcw, Search, X } from 'lucide-react'
+import { ArrowDown, ArrowLeftRight, ArrowUp, Ban, ChevronDown, Download, History, Info, Play, Plus, RotateCcw, Search, X } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import type { CompareSide, Effort, Rule, RunStats, Spread } from '../../api/types'
 import { cn } from '../../lib/cn'
+import { downloadJson } from '../../lib/download'
 import { undoToast } from '../../lib/undoToast'
-import { approx, dollars, ESTIMATE_TITLE, plural, seconds, shortArgs, timeAgo, tokens } from '../../lib/format'
+import { approx, cost as costText, dollars, ESTIMATE_TITLE, plural, seconds, shortArgs, timeAgo, tokens, tokensOut } from '../../lib/format'
 import { configDiff, thinkingWords } from '../../model/configDiff'
 import { RULES } from '../../model/permission'
 import { PRESETS, useCompare, type SideSpec } from '../../store/compare'
@@ -395,7 +396,20 @@ function Results({ previous, onChange }: { previous: boolean; onChange: () => vo
         {results.kind === 'compare' && !previous && (
           <Button size="sm" variant="ghost" onClick={onChange}>Change the setup <ArrowDown className="size-3.5" aria-hidden /></Button>
         )}
+        {!previous && (
+          <Button size="sm" variant="ghost" title="Every side's setup, answers, tools and figures, as a JSON file"
+            onClick={() => downloadJson(`harness-${results.kind}-${results.id ?? 'results'}.json`, results)}>
+            <Download className="size-3.5" /> Download as JSON
+          </Button>
+        )}
       </div>
+      {sides.length > 1 && Math.max(...sides.map((s) => s.stats?.runs ?? 1)) < 3 && (
+        <p className="text-sm text-muted">
+          {sides.some((s) => s.stats) ? 'Fewer than 3 runs per side' : 'One run per side'}: a model answers differently from
+          run to run, so the differences below may be chance, and none is called better or worse. Run each side 3 or 5
+          times to see which differences hold.
+        </p>
+      )}
       {results.kind === 'compare' && results.lookFor && <p className="text-sm"><b>Look for:</b> {results.lookFor}</p>}
       {rerun && (
         <p className="flex items-start gap-1 text-sm text-muted">
@@ -472,21 +486,36 @@ function Results({ previous, onChange }: { previous: boolean; onChange: () => vo
 
 // A difference from side A. Coloured better/worse only when both sides did the same thing;
 // otherwise "less" isn't "better" (a side whose tools were blocked is faster, not better)
-// F349a: and only when it is worth believing: three runs or more, and a change of at least 10 %
-export function Delta({ value, base, unit, comparable, runs, format }:
-  { value: number; base: number | null; unit?: string; comparable: boolean; runs: number; format: (n: number) => string }) {
+// F349a, F441: and only when it is worth believing: three runs or more, a change of at least 10 %, and the two
+// sides' ranges (fastest to slowest run) not overlapping. Anything less is shown plain, with no arrow
+export function Delta({ value, base, unit, comparable, runs, format, range, baseRange, estimated }:
+  { value: number; base: number | null; unit?: string; comparable: boolean; runs: number; format: (n: number) => string
+    range?: Spread; baseRange?: Spread; estimated?: boolean }) {
   if (base == null || value === base) return null
   const d = value - base
   const big = runs >= 3 && Math.abs(d) / Math.max(Math.abs(base), 1e-9) >= 0.1
-  const judged = comparable && big
+  const apart = !range || !baseRange || range.max < baseRange.min || range.min > baseRange.max
+  const judged = comparable && big && apart
+  const why = !comparable ? ' (the sides used different tools, so this is not better or worse)'
+    : runs < 3 ? '. Too few runs to call better or worse: with fewer than 3, a difference may be chance.'
+      : !big ? '. Too small a change to call better or worse.'
+        : !apart ? "'s middle, but the two sides' runs overlap, so it isn't called better or worse." : ''
   return (
     <span className={cn('text-xs whitespace-nowrap', !judged ? 'text-muted' : d < 0 ? 'text-ok' : 'text-bad')}
-      title={`${d < 0 ? 'less' : 'more'} than side A${!comparable ? ' (the sides used different tools, so this is not better or worse)'
-        : !big ? '. Too few runs or too small a change to call better or worse.' : ''}`}>
-      {d < 0 ? <ArrowDown aria-hidden className="inline size-3 align-[-0.125em]" /> : <ArrowUp aria-hidden className="inline size-3 align-[-0.125em]" />}{d > 0 ? '+' : '−'}{format(Math.abs(d))}{unit}
+      title={`${d < 0 ? 'less' : 'more'} than side A${why}`}>
+      {judged && (d < 0 ? <ArrowDown aria-hidden className="inline size-3 align-[-0.125em]" /> : <ArrowUp aria-hidden className="inline size-3 align-[-0.125em]" />)}
+      {estimated && '≈ '}{d > 0 ? '+' : '−'}{format(Math.abs(d))}{unit}
       {judged && <span className="sr-only">{d < 0 ? '(better)' : '(worse)'}</span>}
     </span>
   )
+}
+
+// Whether two sides did the same thing, so less time or fewer tokens can be called better: the same tools in
+// every run (with several runs), or in the one run
+function sameTools(a: CompareSide, b: CompareSide) {
+  const paths = (s: CompareSide) => (s.stats?.tools?.length ? s.stats.tools : [s.tools.map((t) => t.name)]).map((p) => p.join(','))
+  const all = new Set([...paths(a), ...paths(b)])
+  return all.size === 1
 }
 
 const OUTCOME: Record<string, string> = {
@@ -507,8 +536,7 @@ const figure = (side: CompareSide, key: 'seconds' | 'tokens_read' | 'tokens_writ
 function ResultCard({ side, base, letter, rerun }: { side: CompareSide; base: CompareSide | null; letter: string; rerun: boolean }) {
   const main = (side.calls ?? []).filter((c) => !c.sub)
   const helper = (side.calls ?? []).filter((c) => c.sub)
-  const names = (s: CompareSide) => s.tools.map((t) => t.name).join(',')
-  const comparable = !!base && names(base) === names(side)
+  const comparable = !!base && sameTools(base, side)
   const est = side.provider === 'mock'
   const info = useServer((s) => s.info)
   // Several runs: the tiles show the middle of the runs that answered; none answered, the first run's figures
@@ -552,19 +580,23 @@ function ResultCard({ side, base, letter, rerun }: { side: CompareSide; base: Co
       <div className="grid grid-cols-2 gap-2">
         {side.stats && <RunsSummary stats={side.stats} />}
         <Stat label={`Time${runs}`}>{seconds(figure(side, 'seconds') ?? 0)}
-          <Delta value={figure(side, 'seconds') ?? 0} base={base ? figure(base, 'seconds') : null} comparable={comparable} runs={runCount} format={(n) => seconds(n)} /></Stat>
+          <Delta value={figure(side, 'seconds') ?? 0} base={base ? figure(base, 'seconds') : null} comparable={comparable} runs={runCount} format={(n) => seconds(n)}
+            range={side.stats?.seconds} baseRange={base?.stats?.seconds} /></Stat>
         <Stat label={`Model calls${side.stats ? ' (first run)' : ''}`}>{main.length}{helper.length > 0 && <span className="text-xs font-normal text-muted">+{helper.length} helper</span>}</Stat>
         {side.tokens_read > 0 || (base && base.tokens_read > 0) ? (
           <>
             <Stat label={`Tokens in${runs}`}><span title={est ? ESTIMATE_TITLE : undefined}>{approx(tokens(figure(side, 'tokens_read') ?? 0), est)}</span>
-              <Delta value={figure(side, 'tokens_read') ?? 0} base={base ? figure(base, 'tokens_read') : null} comparable={comparable} runs={runCount} format={tokens} /></Stat>
-            <Stat label={`Tokens out${runs}`}><span title={est ? ESTIMATE_TITLE : undefined}>{approx(tokens(figure(side, 'tokens_written') ?? 0), est)}</span>
-              <Delta value={figure(side, 'tokens_written') ?? 0} base={base ? figure(base, 'tokens_written') : null} comparable={comparable} runs={runCount} format={tokens} /></Stat>
+              <Delta value={figure(side, 'tokens_read') ?? 0} base={base ? figure(base, 'tokens_read') : null} comparable={comparable} runs={runCount} format={tokens}
+                range={side.stats?.tokens_read} baseRange={base?.stats?.tokens_read} estimated={est} /></Stat>
+            <Stat label={`Tokens out${runs}`}><span title={est ? ESTIMATE_TITLE : undefined}>{tokensOut(figure(side, 'tokens_written') ?? 0, est)}</span>
+              <Delta value={figure(side, 'tokens_written') ?? 0} base={base ? figure(base, 'tokens_written') : null} comparable={comparable} runs={runCount} format={tokens}
+                range={side.stats?.tokens_written} baseRange={base?.stats?.tokens_written} estimated={est} /></Stat>
           </>
         ) : <div className="col-span-2 rounded-md bg-sunken px-2.5 py-1.5 text-xs text-muted">No token counts from this provider.</div>}
         {cost != null && (
-          <Stat label={`Cost${runs}`}><span title={est ? ESTIMATE_TITLE : undefined}>{approx(dollars(cost), est)}</span>
-            <Delta value={cost} base={base ? figure(base, 'cost') : null} comparable={comparable} runs={runCount} format={dollars} /></Stat>
+          <Stat label={`Cost${runs}`}><span title={est ? ESTIMATE_TITLE : undefined}>{costText(cost, est)}</span>
+            <Delta value={cost} base={base ? figure(base, 'cost') : null} comparable={comparable} runs={runCount} format={dollars}
+              range={side.stats?.cost} baseRange={base?.stats?.cost} estimated /></Stat>
         )}
       </div>
       {main.length > 0 && main.some((c) => c.input_tokens + c.cache_read > 0) && <MiniChart calls={main} firstRun={!!side.stats} />}
