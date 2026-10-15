@@ -53,11 +53,11 @@ function start(x: Experiment) {
   setUpExperiment(x)
 }
 
-// What a card will do besides send its message
+// What a card will do besides send its message. F409: not the settings it changes (often none on
+// yours, and the Undo bar above the message box says exactly what changed once it has)
 function CardTags({ x }: { x: Experiment }) {
   const tags = [
     x.predict && 'guess first',
-    x.apply && 'changes a setting (undoable)',
     x.switchTo && 'switches model (undoable)',
     x.needs && `needs ${x.needs}`,
   ].filter(Boolean) as string[]

@@ -8,7 +8,8 @@ import { useSession } from '../../store/session'
 import { usePrefs, useUi } from '../../store/ui'
 import { RunView } from './RunView'
 import toolTurn from '../../test/fixtures/tool_turn.json'
-import { EXPERIMENTS, findExperiment, nextExperiment } from '../../learn/experiments'
+import answer from '../../test/fixtures/answer.json'
+import { EXPERIMENTS, experimentDone, findExperiment, nextExperiment } from '../../learn/experiments'
 import { GROUPS } from '../../learn/concepts'
 import { QUIZ } from '../../learn/quiz'
 import { EmptyState } from './EmptyState'
@@ -166,5 +167,30 @@ describe('F408: experiments and the quiz follow the tiers', () => {
     expect(heads.length).toBeGreaterThan(5)
     expect(heads.map(place)).toEqual(heads.map(place).sort((a, b) => a - b))
     expect(heads.indexOf('A busy service')).toBeLessThan(heads.indexOf('Ask before acting'))
+  })
+})
+
+describe('F410: Runaway task counts as done when it stops at the call limit', () => {
+  // the message stopped by the limit, as the server sends it: an error in plain words, the raw one as detail
+  const stoppedAt = (text: string, detail: string) => [
+    ...(answer as Array<Record<string, unknown>>).filter((e) => e.kind !== 'answer' && e.kind !== 'done')
+      .map((e) => e.kind === 'user' ? { ...e, text } : e),
+    { seq: 90, kind: 'error', time: 2, msg: 1, message: 'Stopped after 2 model calls: the most allowed for one message.', detail },
+    { seq: 91, kind: 'done', time: 2, msg: 1 },
+  ]
+  const runaway = findExperiment('runaway')!
+
+  it('the stop at the limit marks it done', () => {
+    useUi.setState({ experimentId: 'runaway' })
+    show(stoppedAt(runaway.message, 'RuntimeError: Stopped: hit max_turns (2)'))
+    expect(usePrefs.getState().experimentsDone).toContain('runaway')
+  })
+
+  it('any other failure still does not count, and the limit stop counts only for Runaway', () => {
+    const failed = deriveRuns(stoppedAt(runaway.message, 'RuntimeError: something else') as HarnessEvent[]).runs[0]
+    expect(experimentDone(runaway, failed, 'mock')).toBe(false)
+    const cutoff = findExperiment('cutoff')!
+    const limited = deriveRuns(stoppedAt(cutoff.message, 'RuntimeError: Stopped: hit max_turns (2)') as HarnessEvent[]).runs[0]
+    expect(experimentDone(cutoff, limited, 'mock')).toBe(false)
   })
 })

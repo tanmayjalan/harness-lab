@@ -517,4 +517,11 @@ export function isToolCall(e: HarnessEvent): e is ToolCallEvent {
   return e.kind === 'tool_call'
 }
 
+// The message stopped at the limit on model calls: the number, or null. The raw error is the detail
+// when the message is in plain words (older saves: the message)
+export function callLimitHit(run: Run): number | null {
+  const m = (run.errorDetail ?? run.error ?? '').match(/hit max_turns \((\d+)\)/)
+  return m ? Number(m[1]) : null
+}
+
 export type { CompactedEvent }
