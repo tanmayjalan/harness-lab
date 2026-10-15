@@ -6,7 +6,7 @@ import type { Call, Run, RunModel } from '../../model/derive'
 import { callsOfRun } from '../../model/derive'
 import { cn } from '../../lib/cn'
 import { approx, count, dollars, ESTIMATE_TITLE, plural, seconds, tokens } from '../../lib/format'
-import { Explain, ShrinkAllExplanations } from '../../learn/Explain'
+import { Explain } from '../../learn/Explain'
 import type { ConceptKey } from '../../learn/concepts'
 import { Markdown } from '../Markdown'
 import { Callout, Disclosure, RunningBanner, Tip } from '../ui'
@@ -28,6 +28,9 @@ type Props = {
   onCompare?: (run: Run) => void
   onRewind?: (run: Run) => void // go back to before this message, files too
 }
+
+// Quiet until you point at the message or tab into it; always shown on touch screens, which have no hover
+const ON_HOVER = 'opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100'
 
 // The first place each idea appears gets the full explanation (once, then never again)
 function firstPlaces(model: RunModel) {
@@ -76,7 +79,6 @@ export const Timeline = memo(function Timeline({ model, inspectedCallId, live, r
 
   return (
     <div className="space-y-6">
-      <ShrinkAllExplanations />
       {model.runs.map((run) => (
         <div key={run.index} className="space-y-3">
           {model.switches.filter((s) => s.beforeRun === run.index).map((s) => (
@@ -88,7 +90,7 @@ export const Timeline = memo(function Timeline({ model, inspectedCallId, live, r
           ))}
           <UserMessage run={run} running={running} onRerun={onRerun} onCompare={onCompare} onRewind={onRewind} />
           <RunBody run={run} model={model} first={first} inspectedCallId={inspectedCallId} selectedTool={selectedTool}
-            onSelect={selectCall} live={run === last && running ? live : ''} active={run === last && running}
+            onSelect={selectCall} live={run === last && running ? live : ''} active={run === last && running} latest={run === last}
             justFailed={run === last && watched.current.has(`${conversation}:${run.index}`)} />
         </div>
       ))}
@@ -115,7 +117,7 @@ function UserMessage({ run, running, onRerun, onCompare, onRewind }:
         <span className="sr-only">You: </span>{run.text}
       </div>
       {!running && (onRerun || onCompare || rewind) && (
-        <div className="flex gap-1">
+        <div className={cn('flex gap-1', ON_HOVER)}>
           {onRerun && (
             <Tip text="Send this message again with your current settings (model, prompt, tools and permissions, thinking, caching, limits, facts about you) and compare the two">
               <button type="button" onClick={() => onRerun(run)}
@@ -155,10 +157,11 @@ type BodyProps = {
   onSelect: (callId: string, toolId?: string | null) => void
   live: string
   active: boolean
+  latest: boolean // the newest message: its numbers stay in view
   justFailed: boolean // it ran while you watched: a failure is read out at once
 }
 
-function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, live, active, justFailed }: BodyProps) {
+function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, live, active, latest, justFailed }: BodyProps) {
   const calls = callsOfRun(model, run)
   const plan = latestPlan(model, calls)
   const lastCall = calls[calls.length - 1]
@@ -189,6 +192,7 @@ function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, l
           <CallDivider call={call} selected={call.id === inspectedCallId} multi={model.runs.length > 1}
             hint={!hintSeen && call.id === model.callOrder[0]} onClick={() => {
             onSelect(call.id)
+            usePrefs.getState().setInspectorOpen(true) // picking a call is what opens the Inspector
             // on a narrow screen the inspector is its own view: go there
             if (typeof matchMedia !== 'undefined' && matchMedia('(max-width: 899px)').matches) useUi.getState().setMobilePane('inspect')
           }} />
@@ -241,7 +245,8 @@ function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, l
         </SystemNote>
       )}
       {live && <LiveBubble text={live} />}
-      {run.answer && <AnswerBubble run={run} calls={calls} waitedForYou={waitedForYou} />}
+      {run.answer && <AnswerBubble run={run} calls={calls} waitedForYou={waitedForYou}
+        pinned={latest || calls.some((c) => c.id === inspectedCallId)} />}
       {run.cutOff && (
         <SystemNote icon={<CircleStop className="size-3.5" />}>
           {run.cutOff === 'max_tokens'
@@ -313,8 +318,8 @@ function CallDivider({ call, selected, onClick, multi, hint }: DividerProps) {
       <span className={cn('h-px w-3 shrink-0', selected ? 'bg-accent' : 'bg-line')} />
       {/* The pill wraps; its dots are drawn by CSS in front of each item, and the inner box is clipped
           (padding is outside the clip), so a wrapped line never starts with "·" (F320, as in the footer) */}
-      <span className={cn('min-w-0 rounded-2xl border px-2 py-0.5',
-        selected ? 'border-accent bg-accent-soft' : 'border-line bg-panel group-hover:border-muted')}>
+      <span className={cn('min-w-0 rounded-2xl border px-2',
+        selected ? 'border-accent bg-accent-soft' : 'border-transparent group-hover:border-line group-hover:bg-panel')}>
         <span className="block overflow-hidden">
         <span className="-ml-3 flex flex-wrap items-center gap-y-0.5">
         <b className={cn('font-semibold', SEP)}>{multi && `Message ${call.runIndex} · `}{call.stepLabel && `${call.stepLabel} · `}Call {call.turn}{call.maxTurns <= 5 && ` (max ${call.maxTurns})`}</b>
@@ -359,18 +364,19 @@ function LimitsLink() {
 // A footer item with its separator dot drawn in front by CSS (F320)
 const SEP = "before:px-1.5 before:content-['·']"
 
-function AnswerBubble({ run, calls, waitedForYou }: { run: Run; calls: Call[]; waitedForYou: number }) {
+// `pinned`: the numbers stay in view (the newest message, or the one being inspected); otherwise they show on hover
+function AnswerBubble({ run, calls, waitedForYou, pinned }: { run: Run; calls: Call[]; waitedForYou: number; pinned: boolean }) {
   const info = useServer((s) => s.info)
   const secs = run.endedAt ? run.endedAt - run.startedAt : undefined
   return (
-    <div className="space-y-1">
+    <div className="group space-y-1">
       <div className="rounded-2xl rounded-bl-md border border-line bg-panel px-4 py-3 shadow-sm">
         <span className="sr-only">Model:</span>
         <Markdown text={run.answer!.text} />
       </div>
       {/* Each item carries its dot in front; the first one on every line is pushed past the clipped left
           edge (the margin, not padding, so the clip is at the text's edge), so no line starts with "·" */}
-      <div className="ml-1 overflow-hidden text-xs text-muted">
+      <div className={cn('ml-1 overflow-hidden text-xs text-muted', !pinned && ON_HOVER)}>
         <div className="-ml-3 flex flex-wrap">
           <span className={SEP}>{providerName(info?.providers, run.answer!.provider)} · <code>{run.answer!.model}</code></span>
           <span className={SEP}>{plural(calls.length, 'call')}</span>

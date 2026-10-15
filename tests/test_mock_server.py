@@ -148,6 +148,7 @@ class OverHttpTests(unittest.TestCase):
                 {"type": "result", "is_error": False, "structured_output": {"text": "ok", "tool_calls": []}}))
 
         with mock.patch.dict("os.environ", {"ANTHROPIC_BASE_URL": "http://x", "ANTHROPIC_API_KEY": "mock"}), \
+             mock.patch.object(mock_server.shutil, "which", return_value="claude"), \
              mock.patch.object(mock_server.subprocess, "run", side_effect=fake_run):
             mock_server.ask_claude(REQUEST)
         self.assertNotIn("ANTHROPIC_BASE_URL", seen["env"])
@@ -238,7 +239,8 @@ class ReadReplyTests(unittest.TestCase):
             seen.setdefault("budgets", []).append(kw["env"]["MAX_THINKING_TOKENS"])
             return mock.Mock(returncode=0, stdout=json.dumps(RESULT))
 
-        with mock.patch.object(mock_server.subprocess, "run", side_effect=fake_run):
+        with mock.patch.object(mock_server.shutil, "which", return_value="claude"), \
+             mock.patch.object(mock_server.subprocess, "run", side_effect=fake_run):
             mock_server.ask_claude(REQUEST)
             mock_server.ask_claude({**REQUEST, "thinking": {"type": "enabled", "budget_tokens": 3000}})
         self.assertEqual(seen["budgets"], ["0", "3000"])

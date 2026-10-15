@@ -1,12 +1,12 @@
 # Starts the harness lab's web page: http://127.0.0.1:8000
 # Ctrl+C (or stop.bat from another window) stops it.
 #
-#   .\start.ps1                       mock: real replies from `claude -p`, no API key
-#   .\start.ps1 -Provider deepseek    DeepSeek (needs DEEPSEEK_API_KEY)
-#   .\start.ps1 -Provider anthropic   the Anthropic API (needs ANTHROPIC_API_KEY)
-#   .\start.ps1 -Real                 same as -Provider anthropic
-#   .\start.ps1 -NoBrowser            don't open the browser
-#   .\start.ps1 -NoBuild              don't rebuild the page, even if ui\ changed
+#   .\scripts\start.ps1                       mock: real replies from `claude -p`, no API key
+#   .\scripts\start.ps1 -Provider deepseek    DeepSeek (needs DEEPSEEK_API_KEY)
+#   .\scripts\start.ps1 -Provider anthropic   the Anthropic API (needs ANTHROPIC_API_KEY)
+#   .\scripts\start.ps1 -Real                 same as -Provider anthropic
+#   .\scripts\start.ps1 -NoBrowser            don't open the browser
+#   .\scripts\start.ps1 -NoBuild              don't rebuild the page, even if ui\ changed
 param(
     [ValidateSet("mock", "anthropic", "deepseek")][string]$Provider = "mock",
     [switch]$Real,
@@ -16,8 +16,9 @@ param(
 if ($Real) { $Provider = "anthropic" }
 
 $ErrorActionPreference = "Stop"
-Set-Location $PSScriptRoot   # so `-m harness...` finds the code
-$python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
+$Root = Split-Path -Parent $PSScriptRoot   # the Harness folder (this script lives in scripts\)
+Set-Location $Root   # so `-m harness...` finds the code
+$python = Join-Path $Root ".venv\Scripts\python.exe"
 $env:PYTHONIOENCODING = "utf-8"
 $env:PYTHONUNBUFFERED = "1"
 

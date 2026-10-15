@@ -122,3 +122,34 @@ export function LoopDiagram({ active, path = [], className, compact = false, ear
     </div>
   )
 }
+
+// The same loop as one line, for the top of the Inspector: the full drawing is on the new-conversation page.
+// The steps this call went through are in plain text, the one it is at is marked; the rest stay faint.
+const STRIP: { id: LoopNode; label: string }[] = [
+  { id: 'you', label: 'You' }, { id: 'call', label: 'Call' }, { id: 'reply', label: 'Reply' },
+  { id: 'tools', label: 'Tools' }, { id: 'answer', label: 'Answer' },
+]
+
+export function LoopStrip({ active, path = [], className, early = false, hooks = '' }:
+  { active: LoopNode | null; path?: LoopNode[]; className?: string; early?: boolean; hooks?: string }) {
+  const name = (id: LoopNode) => NODES.find((n) => n.id === id)!.title.replace(/^\d\. /, '')
+  const label = path.length && active
+    ? `Harness loop: this call went ${path.map(name).join(' → ')}; now at ${name(active)}${early ? ' (stopped early)' : ''}${hooks ? `; your hooks: ${hooks}` : ''}`
+    : `The harness loop: ${STRIP.map((s) => s.label).join(', ')}`
+  return (
+    <div role="img" aria-label={label} className={cn('flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs', className)}>
+      {STRIP.map((s, i) => (
+        <span key={s.id} aria-hidden className="inline-flex items-center gap-1">
+          {i > 0 && <span className="text-muted">→</span>}
+          <span className={cn('rounded border px-1.5',
+            active === s.id ? 'border-accent bg-accent-soft font-medium text-accent'
+              : path.includes(s.id) ? 'border-line text-fg' : 'border-transparent text-muted')}>
+            {s.label}
+          </span>
+        </span>
+      ))}
+      {early && <span aria-hidden className="ml-1 font-semibold text-bad">stopped early</span>}
+      {hooks && <span aria-hidden className="ml-1 font-semibold text-warn">your hooks: {hooks}</span>}
+    </div>
+  )
+}

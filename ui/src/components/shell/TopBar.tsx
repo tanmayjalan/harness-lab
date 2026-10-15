@@ -26,7 +26,8 @@ export function TopBar({ narrow }: { narrow: boolean }) {
   const toggleSidebar = usePrefs((s) => s.toggleSidebar)
   const sidebarCollapsed = usePrefs((s) => s.sidebarCollapsed)
   const sidebarSheet = useUi((s) => s.sidebarSheet)
-  const inspectorOpen = usePrefs((s) => s.inspectorOpen)
+  const hasCalls = useSession((s) => s.derived.callOrder.length > 0)
+  const inspectorOpen = usePrefs((s) => s.inspectorOpen) && hasCalls // shown only once there is a call
   const setInspectorOpen = usePrefs((s) => s.setInspectorOpen)
   const comparing = useCompare((s) => s.busy)
   const evals = useEvals((s) => s.status)
@@ -110,8 +111,10 @@ export function TopBar({ narrow }: { narrow: boolean }) {
         </IconButton>
         {!narrow && (
           <IconButton label="Inspector" aria-pressed={inspectorOpen}
-            tip={screen !== 'run' ? 'The inspector shows model calls in a conversation' : inspectorOpen ? 'Hide the inspector' : 'Show the inspector'}
-            disabled={screen !== 'run'} onClick={() => setInspectorOpen(!inspectorOpen)}>
+            tip={screen !== 'run' ? 'The inspector shows model calls in a conversation'
+              : !hasCalls ? 'The inspector shows model calls once you send a message'
+              : inspectorOpen ? 'Hide the inspector' : 'Show the inspector'}
+            disabled={screen !== 'run' || !hasCalls} onClick={() => setInspectorOpen(!inspectorOpen)}>
             <PanelRight className="size-4" />
           </IconButton>
         )}

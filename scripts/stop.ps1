@@ -1,7 +1,7 @@
 # Stops the harness lab's servers (web page, sandbox page, mock server, MCP demo server), and nothing else.
 #
-#   .\stop.ps1         stop them
-#   .\stop.ps1 -List   only show what would be stopped
+#   .\scripts\stop.ps1         stop them
+#   .\scripts\stop.ps1 -List   only show what would be stopped
 #
 # A process counts as part of the lab only if BOTH are true:
 #   1. it was started with this folder's own Python (.venv\Scripts\python.exe), and
@@ -10,7 +10,8 @@
 param([switch]$List)
 
 $ErrorActionPreference = "Stop"
-$venvPython = (Join-Path $PSScriptRoot ".venv\Scripts\python.exe").ToLower()
+$Root = Split-Path -Parent $PSScriptRoot   # the Harness folder (this script lives in scripts\)
+$venvPython = (Join-Path $Root ".venv\Scripts\python.exe").ToLower()
 $programs = @(
     "harness.web.server", "harness.web.sandbox", "harness.core.mock_server", "demo_mcp_server.py",
     "web_ui.py", "mock_server.py"   # the same servers under their names before the folders were tidied
