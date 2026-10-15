@@ -393,6 +393,10 @@ export type EvalResult = {
   only?: string // "Only questions containing", when used
   incomplete?: boolean // stopped before every question ran
   unjudged?: number // runs left out because the judge itself failed
+  // Newer rounds only: enough to tell rounds apart and see later what they ran with (harness/evals.py run_suite)
+  questions_hash?: string // the question set and what each checks: rounds are comparable only when it matches
+  config?: RunConfig | null // the prompt, tools and settings every question ran with
+  judge_prompt?: string | null; judge_model?: string | null; checks_version?: number
 }
 export type EvalRun = Omit<EvalResult, 'cases'> & { id: string; time: number; questions: number }
 export type EvalStatus = {
