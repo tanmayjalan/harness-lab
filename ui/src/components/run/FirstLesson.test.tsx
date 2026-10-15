@@ -12,7 +12,8 @@ import { openConversation } from '../../store/selectors'
 import toolTurn from '../../test/fixtures/tool_turn.json'
 import answer from '../../test/fixtures/answer.json'
 import { EXPERIMENTS, experimentDone, findExperiment, nextExperiment } from '../../learn/experiments'
-import { GROUPS } from '../../learn/concepts'
+import { CONCEPTS, GROUPS } from '../../learn/concepts'
+import { Explain } from '../../learn/Explain'
 import { QUIZ } from '../../learn/quiz'
 import { askThenPick, EmptyState } from './EmptyState'
 import { useServer } from '../../store/server'
@@ -277,5 +278,42 @@ describe('F412: a new experiment starts from your settings, not on top of the la
     expect(note.title).toMatch(/Ask before acting/)
     expect(note.body).toMatch(/First put back what the last experiment changed \(at most 2 calls per message\)/)
     vi.restoreAllMocks()
+  })
+})
+
+describe('F413, F414, F419: words a beginner can read', () => {
+  it('an explanation waiting its turn is named in plain words, not the API term', () => {
+    render(<><Explain concept="loop" /><Explain concept="tool_use" /></>)
+    expect(screen.getByText(CONCEPTS.loop.long[0])).toBeInTheDocument()
+    const waiting = screen.getByRole('button', { name: `What does "${CONCEPTS.tool_use.term}" mean?` })
+    expect(waiting.textContent).toBe(CONCEPTS.tool_use.plain)
+  })
+
+  it("the experiment's own idea gets the one full explanation, even when another came first", () => {
+    useUi.setState({ experimentId: 'approval' })
+    render(<><Explain concept="context_window" /><Explain concept="approval" /></>)
+    expect(screen.getByText(CONCEPTS.approval.long[0])).toBeInTheDocument()
+    expect(screen.queryByText(CONCEPTS.context_window.long[0])).toBeNull()
+    expect(screen.getByRole('button', { name: /context window/i }).textContent).toBe(CONCEPTS.context_window.plain)
+  })
+
+  it('without an experiment, the first one on the page is in full', () => {
+    render(<><Explain concept="context_window" /><Explain concept="approval" /></>)
+    expect(screen.getByText(CONCEPTS.context_window.long[0])).toBeInTheDocument()
+    expect(screen.queryByText(CONCEPTS.approval.long[0])).toBeNull()
+  })
+
+  it('the welcome diagram has no API words and no hooks', () => {
+    usePrefs.setState({ explained: ['harness'] })
+    const { container } = render(<EmptyState disabled={false} />)
+    const diagram = container.querySelector('[role="img"]')!
+    const words = `${diagram.textContent} ${diagram.getAttribute('aria-label')} ${diagram.parentElement!.textContent}`
+    expect(words).not.toMatch(/tool_use|end_turn|hook/)
+    expect(words).toMatch(/asked for tools: run them/)
+  })
+
+  it('call lines give the unit: tokens', () => {
+    show(toolTurn)
+    expect(document.body.textContent).toMatch(/[\dk] tokens in \/ [\d.,k]+ out/)
   })
 })
