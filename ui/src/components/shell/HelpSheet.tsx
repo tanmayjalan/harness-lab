@@ -119,7 +119,11 @@ export function HelpSheet() {
                 stand-in, not the real API:
               </p>
               <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted">
-                <li>Token counts and costs are <b>estimates</b> (about 4 characters per token, priced as the chosen model).</li>
+                <li>Token counts and costs are <b>estimates</b> (about 4 characters per token, priced as the chosen model).
+                  Tokens out leave out thinking (its text isn't returned), so tokens out and cost are <b>at least</b> what's shown.</li>
+                <li>The model doesn't get the request as the Raw tab shows it: the mock writes the system prompt, the tools
+                  and the conversation into one text prompt for claude -p, asks for the reply in a fixed shape, and makes up
+                  the ids of tool requests.</li>
                 <li>No prompt caching: the cache switch has no effect, and no cache reads are shown.</li>
                 <li>Thinking turns on and off, but its text isn't returned: you only see that it thought.</li>
                 <li>No streaming: the reply arrives all at once.</li>
