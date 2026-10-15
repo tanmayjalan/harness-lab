@@ -224,7 +224,8 @@ export function Chip({ selected, tone = 'neutral', as = 'span', className, ...re
 
 type CalloutTone = 'info' | 'warn' | 'bad' | 'ok'
 const calloutTones: Record<CalloutTone, string> = {
-  info: 'border-accent/30 bg-accent-soft/60',
+  // grey with a bar on the left: blue is kept for things you can click and the thing that's current
+  info: 'border-transparent border-l-[3px] border-l-line-strong bg-sunken',
   warn: 'border-warn/30 bg-warn-soft text-warn',
   bad: 'border-bad/30 bg-bad-soft text-bad',
   ok: 'border-ok/30 bg-ok-soft',
