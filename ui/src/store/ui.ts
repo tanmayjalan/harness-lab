@@ -43,6 +43,7 @@ type UiState = {
   settingsDrafts: Record<string, string> // unsaved text in Settings ('system', 'desc:<tool>'), kept while you move around
   setScreen: (s: Screen) => void
   selectCall: (id: string | null, toolId?: string | null) => void
+  inspect: (callId: string, tab: InspectorTab, opts?: { toolId?: string | null; narrow?: boolean }) => void // F406: open the Inspector on a call
   follow: () => void
   openSettings: (section?: SettingsSection) => void
   closeSettings: () => void
@@ -99,6 +100,14 @@ export const useUi = create<UiState>((set, get) => ({
   selectCall: (selectedCallId, selectedToolId = null) => {
     usePrefs.getState().sawInspectHint() // you found the Inspector: the "inspect →" hint has done its job
     set({ selectedCallId, selectedToolId, followLatest: false })
+  },
+  // `narrow`: on a narrow screen go to the Inspector view too (a button asked for it; a tool row opening
+  // in the chat does not, so you stay where you were reading)
+  inspect: (callId, tab, opts) => {
+    get().selectCall(callId, opts?.toolId ?? null)
+    usePrefs.getState().setInspectorTab(tab)
+    usePrefs.getState().setInspectorOpen(true)
+    if (opts?.narrow && typeof matchMedia !== 'undefined' && matchMedia('(max-width: 899px)').matches) set({ mobilePane: 'inspect' })
   },
   follow: () => set({ followLatest: true, selectedToolId: null }),
   openSettings: (section) => { if (!get().settingsOpen) remember(); set((s) => ({ settingsOpen: true, settingsSection: section ?? s.settingsSection })) },

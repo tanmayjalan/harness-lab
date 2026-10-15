@@ -10,7 +10,7 @@ import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { useCurrentProvider } from './EmptyState'
 import type { Run, RunModel } from '../../model/derive'
-import { usePrefs, useUi } from '../../store/ui'
+import { usePrefs, useUi, type InspectorTab } from '../../store/ui'
 import { cn } from '../../lib/cn'
 import { askThenPick } from './EmptyState'
 
@@ -107,10 +107,32 @@ export function ExperimentReveal({ model }: { model: RunModel }) {
           <span className="text-muted">{x.predict.why}</span>
         </p>
       )}
+      <LookAt x={x} model={model} run={run} />
       <p className="flex gap-1.5"><Lightbulb className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
         <span><span className="font-medium">What it showed:</span> {x.takeaway}</span></p>
       <p><span className="font-medium">Try next:</span> <TryNext x={x} /></p>
     </Callout>
+  )
+}
+
+const TAB_NAMES: Record<InspectorTab, string> = { summary: 'Summary', sent: 'Sent', received: 'Received', tools: 'Tools', raw: 'Raw' }
+
+// F406: where to look stays on screen after the run, with a button that opens the Inspector there
+// (on the first call that ran a tool, for Tools; on the last call otherwise, which carries everything)
+function LookAt({ x, model, run }: { x: Experiment; model: RunModel; run: Run }) {
+  const tab = x.inspect
+  const callId = tab === 'tools' ? run.callIds.find((id) => model.calls[id]?.toolIds.length) : run.callIds.at(-1)
+  return (
+    <p>
+      <span className="font-medium">Look at:</span> {x.lookAt}
+      {tab && callId && (
+        <>{' '}<button type="button"
+          onClick={() => useUi.getState().inspect(callId, tab, { toolId: tab === 'tools' ? model.calls[callId].toolIds[0] : null, narrow: true })}
+          className="rounded border border-accent/40 bg-panel px-1.5 py-0.5 text-accent hover:border-accent">
+          Open Inspector → {TAB_NAMES[tab]}
+        </button></>
+      )}
+    </p>
   )
 }
 

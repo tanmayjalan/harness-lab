@@ -279,13 +279,15 @@ describe('timeline accessibility (F321 F322 F323 F324 F325 F326b)', () => {
     expect(screen.queryByText(CONCEPTS.loop.long[0])).toBeNull()
   })
 
-  it('the Inspector starts closed and opens when you pick a call; a tool row alone does not open it', () => {
+  // F406: a tool row opens it too, on its Tools tab (the first experiment says "click a tool row, then Inspector → Tools")
+  it('the Inspector starts closed and opens when you pick a call or a tool row', () => {
     usePrefs.setState({ inspectorOpen: false })
     show(toolTurn)
-    fireEvent.click(screen.getByText('get_weather'))
-    expect(usePrefs.getState().inspectorOpen).toBe(false)
     fireEvent.click(screen.getByRole('button', { name: /^Call 1/ }))
     expect(usePrefs.getState().inspectorOpen).toBe(true)
+    usePrefs.setState({ inspectorOpen: false, inspectorTab: 'summary' })
+    fireEvent.click(screen.getByText('get_weather'))
+    expect(usePrefs.getState()).toMatchObject({ inspectorOpen: true, inspectorTab: 'tools' })
   })
 
   it('in learning mode every explanation stays in full', () => {

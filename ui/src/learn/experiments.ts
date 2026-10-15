@@ -3,6 +3,7 @@
 import type { SettingsChange } from '../api/types'
 import type { Run, RunModel } from '../model/derive'
 import type { ConceptKey, Group } from './concepts'
+import type { InspectorTab } from '../store/ui'
 
 export type Experiment = {
   id: string
@@ -11,7 +12,8 @@ export type Experiment = {
   message: string
   concept: ConceptKey
   teaches: string // one line on the card
-  lookAt: string // shown above the conversation while it runs
+  lookAt: string // shown above the conversation while it runs, and in what it showed afterwards
+  inspect?: InspectorTab // the Inspector tab lookAt points to: afterwards, a button opens it there
   takeaway: string // shown under the answer
   tryNext: string // shown under the answer
   tryNextKept?: string // instead of tryNext when a conversation keeps its start ("From your next conversation")
@@ -44,6 +46,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: "What's the weather in Paris, in Fahrenheit?",
     teaches: 'The model asks for tools and the harness runs them: how many calls to the model does one question take?',
     lookAt: 'Each "Call" line is one trip to the model. Click a tool row, then Inspector → Tools to follow one round trip.',
+    inspect: 'tools',
     takeaway: 'The model never ran a tool: it asked, the harness ran it (the weather came from the internet), and the result went back in the next call.',
     tryNext: 'Ask "Weather in Paris and Tokyo?": one reply can ask for two tools at once.',
     tryMessage: 'Weather in Paris and Tokyo?',
@@ -54,6 +57,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: 'Read missing.txt',
     teaches: "A failing tool doesn't crash anything: the error goes back to the model.",
     lookAt: 'The red "failed" tool row, then Inspector → Sent → the tool result marked is_error.',
+    inspect: 'sent',
     takeaway: 'The harness caught the failure and sent it to the model as a result. The model decided what to say.',
     tryNext: 'Ask it to "read missing.txt, and if it isn\'t there, list the folder instead".',
     tryMessage: "read missing.txt, and if it isn't there, list the folder instead",
@@ -108,6 +112,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: 'Read notes.md, then budget.csv, then recipes/pancakes.txt, one at a time, then summarise each in a line',
     teaches: 'Every call resends everything so far, so each call is bigger than the last.',
     lookAt: 'Inspector → Summary → "Size of each call", and Sent → the green new entries on each call.',
+    inspect: 'summary',
     takeaway: 'The model keeps no memory: the harness resends the whole history, so cost grows with every step.',
     tryNext: 'Turn on trimming (Settings → Context, keep 1), then Re-run and compare the sizes.',
   },
@@ -134,6 +139,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: 'What is the capital of Australia?',
     teaches: 'What does the harness do when the service is too busy to answer?',
     lookAt: 'The practice switch is on (Undo restores it). Look for "tried again" on the call line, and Inspector → Summary: the wait has its own part of the time bar.',
+    inspect: 'summary',
     takeaway: 'A busy service is normal. The harness waits and sends the same request again; it is still one call, just slower.',
     tryNext: 'Turn the switch off (Undo) and send it again: one try, and no waiting. Or Compare → "A calm service vs a busy one" to see both side by side.',
   },
@@ -222,6 +228,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: 'Read notes.md, then budget.csv, and summarise both in a line each',
     teaches: 'With caching on, later calls read the unchanged start from the cache, far cheaper.',
     lookAt: 'Caching is on (Undo restores it). From call 2, Inspector → Summary shows tokens "from cache".',
+    inspect: 'summary',
     takeaway: 'Caching pays when the start of each call stays the same: same prompt, same tools, history only growing.',
     tryNext: 'Edit the prompt mid-conversation and watch "start changed" undo the saving.',
     tryNextKept: 'This conversation keeps the prompt it began with, which is what keeps caching working. Edit the prompt, start a new conversation, send the same message, and see the new start written to the cache again.',
@@ -239,6 +246,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: "What's the weather in Paris, Tokyo and London? Look all three up in one go.",
     teaches: 'One reply asks for three lookups: does the harness have to wait for each in turn?',
     lookAt: '"Tools at once" is on (Undo restores it). Look for "3 tools at once" on the call line, and Inspector → Summary: the tools part of the time bar.',
+    inspect: 'summary',
     takeaway: 'Independent, allowed tools can run together: the time is the slowest one, not the sum. Anything that needs you still waits its turn.',
     tryNext: 'Compare → "Tools one by one vs at once" to see the time saved side by side. (If the model asked for one city at a time, there was nothing to run together: try again.)',
   },
@@ -249,6 +257,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: 'Book meeting room B for 3pm tomorrow for 4 people.',
     teaches: 'Every call carries every tool description. What do 40 more tools cost?',
     lookAt: 'All 40 office tools are sent (Undo restores it). Inspector → Summary: the context-window bar and the tokens sent, compared with a normal call. Then Sent → Tools offered: over fifty descriptions, on every call.',
+    inspect: 'summary',
     takeaway: 'Every description went with every call, used or not. Each call sent more tokens, and the model had over fifty tools to choose from.',
     tryNext: 'Start a new conversation and try "Find a tool first": the same message, with the office tools found on demand. (In this conversation book_room is already loaded, so there would be nothing to find.)',
   },
@@ -346,6 +355,7 @@ export const EXPERIMENTS: Experiment[] = [
     message: 'File my 18 euro taxi expense from yesterday.',
     teaches: 'Does the model carry every set of instructions all the time, or fetch the one this task needs?',
     lookAt: 'Skills are on (Undo restores it). Look for the load_skill row, and Inspector → Sent → System prompt: one line per skill, not the full text.',
+    inspect: 'sent',
     takeaway: 'A skill costs one line until a task needs it; then its full text arrives as a tool result, in this conversation only.',
     tryNext: 'Compare → "Skills on demand vs all in the prompt" to see what sending every skill in full costs.',
   },
