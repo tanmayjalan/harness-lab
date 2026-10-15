@@ -3,7 +3,7 @@
 // tier by tier (GROUPS), and within a tier in the order written here.
 import type { SettingsChange } from '../api/types'
 import { callLimitHit, type Run, type RunModel } from '../model/derive'
-import { GROUPS, type ConceptKey, type Group } from './concepts'
+import { CONCEPTS, GROUPS, type ConceptKey, type Group } from './concepts'
 import type { InspectorTab } from '../store/ui'
 
 export type Experiment = {
@@ -379,6 +379,13 @@ export const EXPERIMENTS: Experiment[] = [...WRITTEN].sort((a, b) => GROUPS.inde
 // provider in use can show (null when none is left)
 export function nextExperiment(done: string[], current: string | null, provider: string | null): Experiment | null {
   return EXPERIMENTS.find((x) => x.id !== current && !done.includes(x.id) && !cannotShow(x, provider)) ?? null
+}
+
+// F413: an idea taught in a later tier than the experiment you are following (none followed: false).
+// It isn't explained in full yet, and labels that name it use plain words
+export function laterThan(concept: ConceptKey, experimentId: string | null): boolean {
+  const x = findExperiment(experimentId)
+  return !!x && GROUPS.indexOf(CONCEPTS[concept].group) > GROUPS.indexOf(x.tier)
 }
 
 // Ran to the end, on a provider that can show what it is about (a stopped or failed run, or

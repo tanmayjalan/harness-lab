@@ -8,18 +8,26 @@ import { decide } from '../../store/selectors'
 import { useUi } from '../../store/ui'
 import { Button, Kbd } from '../ui'
 
+// Inside the workspace, the path as the model gave it, under "workspace/": the full one only adds noise
+// (and your user name, in a shared screenshot). Outside it, the real place: that is what you are asked about
+function place(a: Approval, full: string): string {
+  const p = a.input.path
+  if (a.outside !== false || typeof p !== 'string' || !p || /^([a-zA-Z]:|[\\/~])/.test(p)) return full
+  return `workspace/${p.replace(/^\.[\\/]/, '').replace(/\\/g, '/')}`
+}
+
 function what(a: Approval): { line: string; detail?: string; mono?: string; note?: string } {
   // Where the file really is, from the server; older saves only had it in the question's wording
-  if (a.tool === 'write_file' || !a.tool) return { line: 'The model wants to write a file:', mono: a.where ?? a.path, detail: a.content }
+  if (a.tool === 'write_file' || !a.tool) return { line: 'The model wants to write a file:', mono: place(a, a.where ?? a.path), detail: a.content }
   if (a.tool === 'read_file' || a.tool === 'list_files') {
     const path = a.where ?? a.prompt.match(/(?:read the file|list the folder) (.*?)\. (?:That|Allow)/)?.[1] ?? String(a.input.path ?? '')
-    return { line: a.tool === 'read_file' ? 'The model wants to read a file:' : 'The model wants to list a folder:', mono: path }
+    return { line: a.tool === 'read_file' ? 'The model wants to read a file:' : 'The model wants to list a folder:', mono: place(a, path) }
   }
   if (a.tool === 'run_python') { // the code itself, so you can read what will run as you (it isn't a sandbox)
     if (typeof a.input.code === 'string') return { line: 'The model wants to run Python code it wrote, as you, from the workspace folder:', detail: a.input.code }
     // A script file: what it says now (F388), so you read what will run before you allow it
     const s = a.script
-    return { line: 'The model wants to run a Python script, as you, from the workspace folder:', mono: a.where ?? String(a.input.path ?? ''),
+    return { line: 'The model wants to run a Python script, as you, from the workspace folder:', mono: place(a, a.where ?? String(a.input.path ?? '')),
       detail: s?.text,
       note: !s ? undefined
         : s.error !== undefined ? `The file ${s.error}, so you can't see what it would run.`

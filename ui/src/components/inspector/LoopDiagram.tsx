@@ -130,7 +130,7 @@ export function LoopDiagram({ active, path = [], className, compact = false, ear
 // The steps this call went through are in plain text, the one it is at is marked; the rest stay faint.
 const STRIP: { id: LoopNode; label: string }[] = [
   { id: 'you', label: 'You' }, { id: 'call', label: 'Call' }, { id: 'reply', label: 'Reply' },
-  { id: 'tools', label: 'Tools' }, { id: 'answer', label: 'Answer' },
+  { id: 'tools', label: 'Run tools' }, { id: 'answer', label: 'Answer' }, // (not "Tools": that is a tab right under it)
 ]
 
 export function LoopStrip({ active, path = [], className, early = false, hooks = '' }:

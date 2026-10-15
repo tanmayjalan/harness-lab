@@ -11,6 +11,8 @@ import { api } from '../../api/client'
 import { openConversation } from '../../store/selectors'
 import toolTurn from '../../test/fixtures/tool_turn.json'
 import answer from '../../test/fixtures/answer.json'
+import hooked from '../../test/fixtures/hooked.json'
+import { LoopStrip } from '../inspector/LoopDiagram'
 import { EXPERIMENTS, experimentDone, findExperiment, nextExperiment } from '../../learn/experiments'
 import { CONCEPTS, GROUPS } from '../../learn/concepts'
 import { Explain } from '../../learn/Explain'
@@ -315,5 +317,52 @@ describe('F413, F414, F419: words a beginner can read', () => {
   it('call lines give the unit: tokens', () => {
     show(toolTurn)
     expect(document.body.textContent).toMatch(/[\dk] tokens in \/ [\d.,k]+ out/)
+  })
+})
+
+describe('Follow-ups to F406 and F413', () => {
+  it('the loop line in the Inspector says "Run tools", so "Tools" is only the tab', () => {
+    render(<LoopStrip active="tools" path={['you', 'call', 'reply', 'tools']} />)
+    expect(screen.getByText('Run tools')).toBeInTheDocument()
+    expect(screen.queryByText(/^Tools$/)).toBeNull()
+  })
+
+  it('a full explanation says in words that closing it opens the next one', () => {
+    render(<><Explain concept="loop" /><Explain concept="history" /></>)
+    expect(screen.getByTestId('explain-next').textContent).toMatch(/Close this \(✕\) and the next new explanation opens/)
+  })
+
+  it('no such line when nothing else is waiting', () => {
+    render(<Explain concept="loop" />)
+    expect(screen.queryByTestId('explain-next')).toBeNull()
+  })
+
+  it('while following a tier-1 experiment, a later-tier idea (thinking) waits instead of taking the full slot', () => {
+    useUi.setState({ experimentId: 'runaway' })
+    render(<><Explain concept="thinking" /><Explain concept="history" /></>)
+    expect(screen.queryByText(CONCEPTS.thinking.long[0])).toBeNull()
+    expect(screen.getByText(CONCEPTS.history.long[0])).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /thinking/ }).textContent).toBe(CONCEPTS.thinking.plain)
+  })
+
+  it('a later-tier idea alone stays an ⓘ until you follow no experiment, or reach its tier', () => {
+    useUi.setState({ experimentId: 'loop' })
+    const { unmount } = render(<Explain concept="thinking" />)
+    expect(screen.queryByText(CONCEPTS.thinking.long[0])).toBeNull()
+    unmount()
+    useUi.setState({ experimentId: 'thinking' })
+    render(<Explain concept="thinking" />)
+    expect(screen.getByText(CONCEPTS.thinking.long[0])).toBeInTheDocument()
+  })
+
+  it('the hook badge uses plain words before hooks are taught', () => {
+    useUi.setState({ experimentId: 'loop' })
+    const { unmount } = show(hooked)
+    expect(screen.getByText('result changed by the harness')).toBeInTheDocument()
+    expect(screen.queryByText('rewritten by your hook')).toBeNull()
+    unmount()
+    useUi.setState({ experimentId: 'hook' })
+    show(hooked)
+    expect(screen.getByText('rewritten by your hook')).toBeInTheDocument()
   })
 })
