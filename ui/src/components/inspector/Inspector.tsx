@@ -24,7 +24,7 @@ import { MessageBody } from './ContentBlock'
 import { JsonTree } from './JsonTree'
 import { MessageList } from './MessageList'
 import { RoundTrips } from './RoundTrip'
-import { LoopDiagram, type LoopNode } from './LoopDiagram'
+import { LoopStrip, type LoopNode } from './LoopDiagram'
 import { HooksCard, hookNote } from './HooksCard'
 import { TokenChart } from './TokenChart'
 
@@ -36,7 +36,7 @@ export function Inspector({ onClose }: { onClose?: () => void }) {
   const setTab = usePrefs((s) => s.setInspectorTab)
   const view = useMemo(() => (callId ? callView(model, callId) : null), [model, callId])
   // The width on screen, not the stored one. Below 520 px (the usual 440 included) the follow control is
-  // an icon and the loop diagram is compact; the count needs 600 px, so between 520 and 600 the picker
+  // an icon; the count needs 600 px, so between 520 and 600 the picker
   // keeps room for its longest name
   const shownWidth = useShownInspectorWidth()
   const narrowPanel = shownWidth < 520
@@ -88,7 +88,7 @@ export function Inspector({ onClose }: { onClose?: () => void }) {
       ) : (
         <Tabs.Root value={tab} onValueChange={(v) => setTab(v as InspectorTab)} className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 border-b border-line px-3 pt-2">
-            <LoopDiagram active={loopNode(view.call)} path={loopPath(view.call)} className="mx-auto max-w-[560px]" compact={narrowPanel}
+            <LoopStrip active={loopNode(view.call)} path={loopPath(view.call)} className="py-1"
               hooks={hookNote(model, view.call)}
               early={!!view.call.stopReason && !['tool_use', 'end_turn'].includes(view.call.stopReason)} />
             {/* At Large text the tabs may not fit: the list scrolls sideways instead of widening the panel.

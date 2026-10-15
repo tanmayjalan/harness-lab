@@ -51,6 +51,8 @@ export function App() {
   const sidebarSheet = useUi((s) => s.sidebarSheet)
   const sidebarCollapsed = usePrefs((s) => s.sidebarCollapsed)
   const inspectorOpen = usePrefs((s) => s.inspectorOpen)
+  // nothing to inspect before the first model call: the chat keeps the room
+  const hasCalls = useSession((s) => s.derived.callOrder.length > 0)
   const inspectorWidth = usePrefs((s) => s.inspectorWidth)
   const fontSize = usePrefs((s) => s.fontSize)
   const theme = usePrefs((s) => s.theme)
@@ -198,7 +200,7 @@ export function App() {
               </div>
             ) : <RunView composerRef={composer} onRerun={rerun} onRewind={setRewinding} />}
           </main>
-          {!narrow && screen === 'run' && inspectorOpen && (
+          {!narrow && screen === 'run' && inspectorOpen && hasCalls && (
             <div className="relative shrink-0 border-l border-line" style={{ width: inspectorWidthCss(inspectorWidth, !sidebarCollapsed) }}>
               <ResizeHandle />
               <Inspector onClose={() => usePrefs.getState().setInspectorOpen(false)} />

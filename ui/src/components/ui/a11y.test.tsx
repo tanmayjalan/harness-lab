@@ -281,10 +281,18 @@ describe('graphics (F283)', () => {
 
 // F282: working controls and content aren't faded below the contrast minimum
 describe('nothing faded (F282)', () => {
-  it('Re-run and Compare under a message are not faded', () => {
+  // They show on hover, so the chat stays calm: hidden or in full, never half-faded, and always there for
+  // the keyboard (focus inside shows them) and on touch screens (no hover)
+  it('Re-run and Compare under a message are never half-faded, and show on keyboard focus', () => {
     wrap(<Timeline model={deriveRuns(toolTurn as HarnessEvent[])} inspectedCallId={null} live="" running={false} onRerun={() => {}} onCompare={() => {}} />)
     const rerun = screen.getByRole('button', { name: /Re-run with current settings/ })
-    for (let el: HTMLElement | null = rerun; el; el = el.parentElement) expect(el.className).not.toMatch(/opacity-\d/)
+    for (let el: HTMLElement | null = rerun; el; el = el.parentElement) {
+      expect(el.className).not.toMatch(/(^|\s)opacity-(?!0\b|100\b)\d/)
+      if (/(^|\s)opacity-0\b/.test(el.className)) {
+        expect(el.className).toContain('group-focus-within:opacity-100')
+        expect(el.className).toContain('[@media(hover:none)]:opacity-100')
+      }
+    }
   })
   it('the delete bin is not faded, and is at least 24 px to hit', async () => {
     const { Sidebar } = await import('../sidebar/Sidebar')

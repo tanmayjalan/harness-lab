@@ -48,7 +48,8 @@ describe('the model runs a script, reads the error and fixes it', () => {
 
   it('the timeline explains running code at the first run, and the output shows in a code block', () => {
     render(<RTooltip.Provider><Timeline model={model()} inspectedCallId={null} live="" running={false} /></RTooltip.Provider>)
-    expect(document.body.textContent).toMatch(/letting the model run code it wrote/)
+    // one full explanation at a time: an earlier one (the loop) is open, so this one waits as a named ⓘ here
+    expect(screen.getByRole('button', { name: 'What does "code execution (run_python)" mean?' })).toBeInTheDocument()
     fireEvent.click(screen.getAllByRole('button', { name: /run_python/ })[0])
     const error = [...document.querySelectorAll('pre.code-block')].find((p) => p.textContent?.includes('Traceback'))
     expect(error).toBeDefined()

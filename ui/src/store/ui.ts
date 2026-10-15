@@ -218,7 +218,8 @@ export const usePrefs = create<Prefs>()(
       sidebarCollapsed: false,
       sidebarComparisonsOpen: false,
       inspectorTab: 'summary',
-      inspectorOpen: true,
+      // closed until you pick a call: an empty Inspector only takes room from the chat
+      inspectorOpen: false,
       // F305: the conversation stays the widest column at 1280 px (its loop diagram is the compact one)
       inspectorWidth: 440,
       setLearningMode: (learningMode) => set({ learningMode }),
@@ -245,10 +246,13 @@ export const usePrefs = create<Prefs>()(
       name: 'harness-lab-prefs',
       // 1: the usual Inspector width went from 520 to 440 (F305). A stored 520 was the old default, never
       // a width picked by hand as far as we can tell, so it moves to the new one; any other width stays
-      version: 1,
+      // 2: the Inspector starts closed and opens when you pick a call; a stored "open" was the old default
+      version: 2,
       migrate: (persisted, version) => {
-        const state = (persisted ?? {}) as Partial<Prefs>
-        return (version < 1 && state.inspectorWidth === 520 ? { ...state, inspectorWidth: 440 } : state) as Prefs
+        let state = (persisted ?? {}) as Partial<Prefs>
+        if (version < 1 && state.inspectorWidth === 520) state = { ...state, inspectorWidth: 440 }
+        if (version < 2) state = { ...state, inspectorOpen: false }
+        return state as Prefs
       },
     },
   ),

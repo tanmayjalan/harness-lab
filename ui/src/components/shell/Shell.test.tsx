@@ -567,10 +567,15 @@ describe('shell accessibility (F309 F310 F310a F310b F310d)', () => {
     expect(conv).toHaveAttribute('aria-controls', 'sidebar')
     fireEvent.click(conv)
     expect(conv).toHaveAttribute('aria-expanded', 'false')
+    // before the first model call there is nothing to inspect: the toggle waits
+    expect(screen.getByRole('button', { name: 'Inspector' })).toBeDisabled()
+    act(() => usePrefs.setState({ inspectorOpen: true }))
+    act(() => useSession.setState({ derived: deriveRuns(declined as HarnessEvent[]) }))
     const insp = screen.getByRole('button', { name: 'Inspector' })
     expect(insp).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(insp)
     expect(screen.getByRole('button', { name: 'Inspector' })).toHaveAttribute('aria-pressed', 'false')
+    act(() => useSession.setState({ derived: deriveRuns([]) }))
   })
 
   it('F310b: the narrow conversations sheet has a Close button', async () => {

@@ -22,7 +22,7 @@ import { Composer } from './components/composer/Composer'
 import { ModelSection } from './components/settings/ModelSection'
 import { SettingsDrawer } from './components/settings/SettingsDrawer'
 import { Inspector } from './components/inspector/Inspector'
-import { EmptyState } from './components/run/EmptyState'
+import { EmptyState, ExperimentGrid } from './components/run/EmptyState'
 import { HelpSheet } from './components/shell/HelpSheet'
 import { Explain } from './learn/Explain'
 import { CONCEPTS, TEACHING_ORDER } from './learn/concepts'
@@ -405,16 +405,28 @@ describe('third pass wording', () => {
     expect(cannotShow(findExperiment('trim')!, 'anthropic')).toBe(true)
     expect(cannotShow(findExperiment('trim')!, 'mock')).toBe(false)
     expect(cannotShow(findExperiment('cache')!, 'mock')).toBe(true)
-    wrap(<EmptyState disabled={false} />)
+    wrap(<><EmptyState disabled={false} /><ExperimentGrid disabled={false} onPick={() => {}} /></>) // the page, and the full list under Experiments
     expect(text()).toMatch(/You're on the mock \(Claude Code's claude -p\): free, but each model call takes 20 to 60 s\./)
     expect(text()).toMatch(/Idea: a cap on calls per message \(call limit \(max_turns\)\)/)
     expect(screen.getByRole('button', { name: /Long reading, short memory/ }).textContent).toMatch(/needs the mock or DeepSeek/)
     expect(screen.getByRole('button', { name: /Long reading, short memory/ })).toBeEnabled()
   })
 
+  it('the empty page shows only the next three experiments, and a way to all of them', () => {
+    usePrefs.setState({ experimentsDone: [EXPERIMENTS[0].id] })
+    wrap(<EmptyState disabled={false} />)
+    expect(screen.queryByRole('button', { name: new RegExp(EXPERIMENTS[0].title) })).toBeNull() // done: not offered again
+    for (const x of EXPERIMENTS.slice(1, 4)) expect(screen.getByRole('button', { name: new RegExp(x.title) })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: new RegExp(EXPERIMENTS[4].title) })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: `All ${EXPERIMENTS.length} experiments (1 done) →` }))
+    expect(useUi.getState().experimentsOpen).toBe(true)
+    usePrefs.setState({ experimentsDone: [] })
+    useUi.setState({ experimentsOpen: false })
+  })
+
   it('F374: the empty page does not say it is on the mock when it is not', () => {
     useSession.setState({ provider: 'anthropic' })
-    wrap(<EmptyState disabled={false} />)
+    wrap(<><EmptyState disabled={false} /><ExperimentGrid disabled={false} onPick={() => {}} /></>) // the page, and the full list under Experiments
     expect(text()).not.toMatch(/You're on the mock/)
     expect(screen.getByRole('button', { name: /Long reading, short memory/ })).toHaveAttribute('aria-disabled', 'true') // F373
   })
@@ -462,7 +474,7 @@ describe('third pass wording', () => {
   it('a provider that arrives later does not change the hook count; the cards follow the server meanwhile', () => {
     useSession.setState({ provider: null })
     useServer.setState({ info: server({ provider: 'anthropic' }) })
-    wrap(<EmptyState disabled={false} />)
+    wrap(<><EmptyState disabled={false} /><ExperimentGrid disabled={false} onPick={() => {}} /></>) // the page, and the full list under Experiments
     expect(text()).not.toMatch(/You're on the mock/)
     expect(screen.getByRole('button', { name: /Long reading, short memory/ })).toHaveAttribute('aria-disabled', 'true') // F373
     act(() => useSession.setState({ provider: 'mock' }))

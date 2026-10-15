@@ -5,6 +5,7 @@ import type { HarnessEvent } from '../../api/types'
 import { deriveRuns } from '../../model/derive'
 import { usePrefs, useUi } from '../../store/ui'
 import { Timeline } from './Timeline'
+import { CONCEPTS } from '../../learn/concepts'
 import { RunView } from './RunView'
 import { ToolRow } from './ToolRow'
 import { HelperCard } from './HelperCard'
@@ -50,8 +51,8 @@ describe('Timeline', () => {
 
   it('explains an idea only at its first appearance', () => {
     show(toolTurn)
-    // two calls ask for tools, but the explanation appears once
-    expect(screen.getAllByText(/means it wants tools run/)).toHaveLength(1)
+    // two calls ask for tools, but the explanation appears once (waiting as an ⓘ behind the loop's, which is open)
+    expect(screen.getAllByRole('button', { name: `What does "${CONCEPTS.tool_use.term}" mean?` })).toHaveLength(1)
   })
 
   it('says which tools were not run when stopped, and why things were blocked', () => {
@@ -268,19 +269,29 @@ describe('timeline accessibility (F321 F322 F323 F324 F325 F326b)', () => {
     expect(rows.filter((b) => b.getAttribute('aria-current') === 'true')).toHaveLength(1)
   })
 
-  it('F326b: "Shrink all explanations" shrinks every full one on screen, and is gone with fewer than two', () => {
+  it('only one explanation is in full at a time; closing it opens the next one waiting', () => {
     show(toolTurn)
-    const before = screen.getAllByRole('button', { name: 'Got it, shorten this next time' }).length
-    expect(before).toBeGreaterThan(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Shrink all explanations' }))
-    expect(screen.queryByRole('button', { name: 'Got it, shorten this next time' })).toBeNull()
-    expect(usePrefs.getState().explained).toEqual(expect.arrayContaining(['loop', 'tool_use', 'end_turn']))
-    expect(screen.queryByRole('button', { name: 'Shrink all explanations' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Got it, shorten this next time' })).toHaveLength(1)
+    expect(screen.getByText(CONCEPTS.loop.long[0])).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Got it, shorten this next time' }))
+    expect(usePrefs.getState().explained).toContain('loop')
+    expect(screen.getAllByRole('button', { name: 'Got it, shorten this next time' })).toHaveLength(1)
+    expect(screen.queryByText(CONCEPTS.loop.long[0])).toBeNull()
   })
 
-  it('F326b: no shrink button in learning mode, where every explanation stays in full', () => {
+  it('the Inspector starts closed and opens when you pick a call; a tool row alone does not open it', () => {
+    usePrefs.setState({ inspectorOpen: false })
+    show(toolTurn)
+    fireEvent.click(screen.getByText('get_weather'))
+    expect(usePrefs.getState().inspectorOpen).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: /^Call 1/ }))
+    expect(usePrefs.getState().inspectorOpen).toBe(true)
+  })
+
+  it('in learning mode every explanation stays in full', () => {
     usePrefs.setState({ learningMode: true })
     show(toolTurn)
-    expect(screen.queryByRole('button', { name: 'Shrink all explanations' })).toBeNull()
+    expect(screen.getAllByText(CONCEPTS.loop.long[0])).toHaveLength(1)
+    expect(screen.getByText(CONCEPTS.tool_use.long[0])).toBeInTheDocument()
   })
 })
