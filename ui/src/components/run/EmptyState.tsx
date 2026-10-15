@@ -107,7 +107,7 @@ const NEXT = 3
 function NextExperiments({ disabled }: { disabled: boolean }) {
   const done = usePrefs((s) => s.experimentsDone)
   const provider = useCurrentProvider()
-  const next = EXPERIMENTS.filter((x) => !done.includes(x.id)).slice(0, NEXT)
+  const next = EXPERIMENTS.filter((x) => !done.includes(x.id)).slice(0, NEXT) // (in teaching order: F408)
   return (
     <div className="space-y-2">
       {next.length > 0 && (

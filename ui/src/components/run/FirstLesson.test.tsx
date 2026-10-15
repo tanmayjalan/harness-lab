@@ -8,7 +8,11 @@ import { useSession } from '../../store/session'
 import { usePrefs, useUi } from '../../store/ui'
 import { RunView } from './RunView'
 import toolTurn from '../../test/fixtures/tool_turn.json'
-import { findExperiment } from '../../learn/experiments'
+import { EXPERIMENTS, findExperiment, nextExperiment } from '../../learn/experiments'
+import { GROUPS } from '../../learn/concepts'
+import { QUIZ } from '../../learn/quiz'
+import { EmptyState } from './EmptyState'
+import { HelpSheet } from '../shell/HelpSheet'
 
 beforeEach(() => {
   useUi.setState({ experimentId: null, guess: null })
@@ -113,5 +117,54 @@ describe('F406: a tool row opens the Inspector, and where to look stays after th
     fireEvent.click(screen.getByRole('button', { name: 'Open Inspector → Summary' }))
     expect(usePrefs.getState().inspectorTab).toBe('summary')
     expect(useUi.getState().selectedCallId).toBe(useSession.getState().derived.callOrder.at(-1))
+  })
+})
+
+describe('F407: from a finished experiment to the next one', () => {
+  it('the reveal ends with the next experiment not done yet', () => {
+    useUi.setState({ experimentId: 'loop' })
+    show(toolTurn)
+    // Watch the loop is not marked done yet when the reveal first draws: it is left out all the same
+    expect(screen.getByTestId('experiment-next').textContent).toMatch(/^Next: Errors are answers too/)
+  })
+
+  it('skips the ones already done, and shows nothing once all are done', () => {
+    usePrefs.setState({ experimentsDone: ['errors', 'busy'] })
+    expect(nextExperiment(['errors', 'busy'], 'loop', 'mock')?.id).toBe('cutoff')
+    usePrefs.setState({ experimentsDone: EXPERIMENTS.map((x) => x.id) })
+    useUi.setState({ experimentId: 'loop' })
+    show(toolTurn)
+    expect(screen.getByTestId('experiment-reveal')).toBeInTheDocument()
+    expect(screen.queryByTestId('experiment-next')).toBeNull()
+  })
+
+  it("skips one the provider in use can't show", () => {
+    const done = EXPERIMENTS.filter((x) => x.id !== 'cache' && x.id !== 'mcp').map((x) => x.id)
+    expect(nextExperiment(done, null, 'mock')?.id).toBe('mcp') // (caching needs the Anthropic API)
+  })
+})
+
+describe('F408: experiments and the quiz follow the tiers', () => {
+  it('the list is tier by tier', () => {
+    const tiers = EXPERIMENTS.map((x) => GROUPS.indexOf(x.tier))
+    expect(tiers).toEqual([...tiers].sort((a, b) => a - b))
+    expect(EXPERIMENTS[0].id).toBe('loop')
+  })
+
+  it("the welcome page's next three stay in the first tier while it has some left", () => {
+    usePrefs.setState({ experimentsDone: ['loop'] })
+    render(<EmptyState disabled={false} />)
+    const cards = screen.getAllByRole('button').filter((b) => b.textContent?.includes('Idea:'))
+    expect(cards.map((c) => EXPERIMENTS.find((x) => c.textContent!.includes(x.title))!.id)).toEqual(['errors', 'busy', 'cutoff'])
+  })
+
+  it('the quiz groups come in the same order', () => {
+    useUi.setState({ helpOpen: true })
+    render(<HelpSheet />)
+    const heads = [...document.querySelectorAll('h4')].map((h) => h.textContent!.replace('after: ', '')).filter((t) => QUIZ.some((q) => q.after === t))
+    const place = (t: string) => { const i = EXPERIMENTS.findIndex((x) => x.title === t); return i < 0 ? Infinity : i }
+    expect(heads.length).toBeGreaterThan(5)
+    expect(heads.map(place)).toEqual(heads.map(place).sort((a, b) => a - b))
+    expect(heads.indexOf('A busy service')).toBeLessThan(heads.indexOf('Ask before acting'))
   })
 })
