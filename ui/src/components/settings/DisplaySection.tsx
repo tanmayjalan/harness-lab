@@ -1,10 +1,37 @@
 // Settings → Display: kept in this browser only.
+import { putBack } from '../../learn/setup'
 import { undoToast } from '../../lib/undoToast'
-import { toast, usePrefs, type FontSize, type Theme } from '../../store/ui'
+import { usePrefs, type FontSize, type Theme } from '../../store/ui'
 import { Button, RadioRow } from '../ui'
 import { Heading } from './common'
 
 // ---- Display ----
+
+// F449: back to a first-time learner's view in one go (a workshop's next attendee, or a second try).
+// What the browser keeps: explanations seen, experiment ticks, quiz answers, the "inspect" hint, and any
+// experiment Undo still waiting. That experiment's change is put back first, so nothing it set stays behind
+export function StartOver() {
+  async function run() {
+    const before = usePrefs.getState().experimentBefore
+    if (before && !(await putBack({ quiet: true }))) return // it said why; nothing cleared
+    const { explained, experimentsDone, quizAnswers, inspectHintSeen } = usePrefs.getState()
+    usePrefs.getState().startOver()
+    undoToast('Started over as a new learner',
+      () => { usePrefs.setState({ explained, experimentsDone, quizAnswers, inspectHintSeen }) },
+      'Explanations show in full again; the experiment ticks and quiz answers are cleared.'
+        + (before ? ` The experiment's change (${before.changes.join(', ')}) is put back; Undo doesn't bring it back.` : ''))
+  }
+  return (
+    <div className="space-y-2 rounded-lg border border-line p-4">
+      <Button size="sm" onClick={() => void run()} aria-describedby="start-over-help">Start over as a new learner</Button>
+      <p id="start-over-help" className="text-xs text-muted">
+        Shows every explanation in full again and clears the experiment ticks and quiz answers, with one Undo.
+        A setting an experiment changed (its Undo above the message box) is put back first. Memory,
+        conversations and the workspace files stay as they are: docs/workshop.md says how to reset those.
+      </p>
+    </div>
+  )
+}
 
 // The Inspector's width without dragging its edge (the edge and its arrow keys still work)
 const WIDTHS: [string, number][] = [['narrow', 360], ['usual', 440], ['wide', 720]]
@@ -41,17 +68,8 @@ export function DisplaySection() {
           <input type="checkbox" checked={prefs.alwaysDetails} onChange={(e) => prefs.setAlwaysDetails(e.target.checked)} />
           Always show details under each answer (every call, its tokens and tool rows), not only the steps
         </label>
-        <Button size="sm" onClick={() => { prefs.resetExplained(); toast({ kind: 'ok', title: 'Explanations will show in full once more' }) }}>
-          Show all explanations again once
-        </Button>
-        <Button size="sm" onClick={() => {
-          const was = prefs.experimentsDone
-          prefs.resetExperimentsDone()
-          undoToast('Experiment progress cleared', () => { usePrefs.setState({ experimentsDone: was }) }, 'The ticks on the experiment cards are gone.')
-        }}>
-          Reset experiment progress
-        </Button>
       </div>
+      <StartOver />
     </div>
   )
 }

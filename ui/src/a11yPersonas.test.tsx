@@ -258,8 +258,12 @@ describe('F429: the area under the chat at 200% zoom', () => {
   it('takes at most a little over half the height and scrolls itself beyond that', () => {
     useSession.setState({ conversation: 'c1', derived: deriveRuns(events(toolTurn)), loaded: true, running: false, origin: null, frozen: false })
     render(<RunView composerRef={{ current: null }} />)
-    const box = screen.getByRole('textbox', { name: 'Message' }).closest('.overflow-y-auto')!
-    expect(box.className).toMatch(/min-h-0/)
-    expect(box.parentElement!.className).toMatch(/max-h-\[55%\]/)
+    // The area under the chat is capped (55%, 40% on a short window); the hints scroll in their own part, and
+    // the message box sits outside that part, so it never scrolls out of sight
+    const message = screen.getByRole('textbox', { name: 'Message' })
+    const area = message.closest('[class*="max-h-[55%]"]')!
+    expect(area.className).toMatch(/short:max-h-\[40%\]/)
+    expect(message.closest('.overflow-y-auto')).toBeNull()
+    expect(area.querySelector('.overflow-y-auto')!.className).toMatch(/min-h-0/)
   })
 })

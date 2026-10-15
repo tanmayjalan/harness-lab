@@ -11,7 +11,7 @@ import { useEvals } from '../../store/evals'
 import { openConversation } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
-import { paidNote } from '../composer/providerWords'
+import { modelsOf, paidNote, toolsTag, unusable } from '../composer/providerWords'
 import { Badge, Button, Callout, Disclosure, Field, RunningBanner, Select, Skeleton, Spinner } from '../ui'
 import { Markdown } from '../Markdown'
 
@@ -68,8 +68,8 @@ export function EvalsScreen() {
             <Select value={`${e.provider}/${e.model || provider?.model || ''}`} disabled={running}
               onChange={(ev) => { const [p, ...m] = ev.target.value.split('/'); e.set({ provider: p, model: m.join('/') }) }}
               className="w-full">
-              {info?.providers.flatMap((p) => (p.models ?? [p.model]).map((m) => (
-                <option key={`${p.name}/${m}`} value={`${p.name}/${m}`} disabled={!!p.missing_key}>{p.label} · {m}{p.missing_key ? ` (needs ${p.missing_key})` : ''}</option>
+              {info?.providers.flatMap((p) => modelsOf(p).map((m) => (
+                <option key={`${p.name}/${m}`} value={`${p.name}/${m}`} disabled={!!unusable(p)}>{p.label} · {m}{toolsTag(p, m)}{p.missing_key ? ` (needs ${p.missing_key})` : p.problem ? ' (not ready)' : ''}</option>
               )))}
             </Select>
           </label>

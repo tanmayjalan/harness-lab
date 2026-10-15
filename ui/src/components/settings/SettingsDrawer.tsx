@@ -7,6 +7,7 @@ import { Bot, Brain, FileText, Layers, Monitor, RotateCcw, Wrench, X } from 'luc
 import { useEffect, useState, type ReactNode } from 'react'
 import { api } from '../../api/client'
 import { cn } from '../../lib/cn'
+import { shortPath } from '../../lib/format'
 import { errorMessage } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { toast, useUi, type SettingsSection } from '../../store/ui'
@@ -39,6 +40,7 @@ export function SettingsDrawer() {
   const changed = changedIn(settings)
   const drafts = useUi((s) => s.settingsDrafts)
   const shared = profile?.shared ?? 0
+  const workspace = useServer((s) => s.info?.folder)
 
   useEffect(() => {
     if (open) {
@@ -110,7 +112,7 @@ export function SettingsDrawer() {
                 </span>
               ) : (
                 <span className="min-w-0 truncate" title={settings.file}>
-                  {section === 'display' ? 'Display choices are kept in this browser only.' : <>Nothing changed from the defaults. Saved in <code>{settings.file}</code></>}
+                  {section === 'display' ? 'Display choices are kept in this browser only.' : <>Nothing changed from the defaults. Saved in <code>{shortPath(settings.file, workspace)}</code></>}
                 </span>
               )}
               <ResetAll />

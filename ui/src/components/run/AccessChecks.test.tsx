@@ -52,3 +52,23 @@ describe('not offered', () => {
     expect(c[4]).not.toMatch(/you stopped the message/)
   })
 })
+
+// F396: a tool that went online doesn't say it ran "on this computer"; F447: only the tools this call offered
+describe('where a tool ran', () => {
+  it('get_weather says it sent a request to the internet', () => {
+    const c = checks(row({ name: 'get_weather', input: { city: 'Paris' } }), 'allow')
+    expect(c[4]).toMatch(/it ran here; it sent a request to the internet \(open-meteo\.com\)/)
+    expect(c[4]).not.toMatch(/on this computer/)
+  })
+
+  it('run_python and MCP tools may have reached the internet; a file tool ran here', () => {
+    expect(checks(row({ name: 'run_python', input: { code: 'print(1)' } }), 'allow')[4]).toMatch(/may have reached the internet/)
+    expect(checks(row({ name: 'notes__add', input: {} }), 'allow')[4]).toMatch(/its MCP server\) ran it; it may have reached the internet/)
+    expect(checks(row({ input: { path: 'a.txt' } }), 'allow')[4]).toMatch(/it ran here, on this computer\./)
+  })
+
+  it('says every tool this call offered goes to the model', () => {
+    const { container } = render(<AccessChecks row={row({})} setting="allow" loaded={null} />)
+    expect(container.textContent).toMatch(/Every tool this call offered goes to the model \(even blocked\s+ones\)/)
+  })
+})

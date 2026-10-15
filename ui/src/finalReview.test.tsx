@@ -406,7 +406,7 @@ describe('third pass wording', () => {
     expect(cannotShow(findExperiment('trim')!, 'mock')).toBe(false)
     expect(cannotShow(findExperiment('cache')!, 'mock')).toBe(true)
     wrap(<><EmptyState disabled={false} /><ExperimentGrid disabled={false} onPick={() => {}} /></>) // the page, and the full list under Experiments
-    expect(text()).toMatch(/You're on the mock \(Claude Code's claude -p\): free, but each model call takes 20 to 60 s\./)
+    expect(text()).toMatch(/You're on the mock \(Claude Code's claude -p\): free, but each model call takes about 5 to 30 s\./)
     expect(text()).toMatch(/Idea: a cap on calls per message \(call limit \(max_turns\)\)/)
     expect(screen.getByRole('button', { name: /Long reading, short memory/ }).textContent).toMatch(/needs the mock or DeepSeek/)
     expect(screen.getByRole('button', { name: /Long reading, short memory/ })).toBeEnabled()

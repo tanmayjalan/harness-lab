@@ -7,6 +7,7 @@ import type { HarnessEvent } from '../../api/types'
 import { deriveRuns } from '../../model/derive'
 import { windowUsed } from '../../model/inspector'
 import { useSession } from '../../store/session'
+import { useServer } from '../../store/server'
 import { usePrefs, useUi } from '../../store/ui'
 import { Inspector } from './Inspector'
 import { JsonTree } from './JsonTree'
@@ -343,10 +344,10 @@ describe('pieces', () => {
       expect(within(img).getByText('1. You').className).not.toMatch(/\btext-accent\b/)
       expect(within(img).getByText('stopped early').tagName).toBe('DIV')
       if (!compact) {
-        expect(within(img).getByText('send the whole history').className).toMatch(/\btext-2xs\b/)
+        expect(within(img).getByText('send all history').className).toMatch(/\btext-2xs\b/)
         expect(within(img).getByText('finished').tagName).toBe('DIV')
       } else {
-        expect(within(img).queryByText('send the whole history')).toBeNull()
+        expect(within(img).queryByText('send all history')).toBeNull()
       }
       unmount()
     }
@@ -485,5 +486,76 @@ describe('the JSON tree and modifier keys', () => {
     }
     fireEvent.keyDown(root, { key: 'ArrowLeft' }) // without a modifier it still folds
     expect(root).toHaveAttribute('aria-expanded', 'false')
+  })
+})
+
+// F444-F447 (developer path): each tab names the code behind it, edited tools are marked, the sandbox and the
+// reply say what they really are
+describe('from the page to the code', () => {
+  afterEach(() => {
+    useServer.setState({ settings: null })
+    useSession.setState({ frozen: false })
+  })
+  const withRequests = (change: (e: Ev) => Ev) => (toolTurn as Ev[]).map((e) => (e.kind === 'request' ? change(e) : e))
+
+  // F444 / DEV-2: a quiet line names the function behind each tab
+  it('Sent names the function that builds the request', () => {
+    open(toolTurn, 0, 'sent')
+    expect(text()).toMatch(/In the code: agent\(\) in harness\/core\/loop.py builds this request/)
+  })
+
+  it('Received names the function that gets the reply', () => {
+    open(toolTurn, 0, 'received')
+    expect(text()).toMatch(/In the code: agent\(\) in harness\/core\/loop.py gets this reply/)
+  })
+
+  it('Tools names the functions around each tool, and where hooks are loaded', () => {
+    open(toolTurn, 0, 'tools')
+    expect(text()).toMatch(/In the code: _before \(checks\), _run_one \(runs\) and _after \(your after_tool hook\) in harness\/core\/loop.py/)
+    expect(text()).toMatch(/harness\/features\/hooks.py/)
+  })
+
+  // F446 / DEV-7: a tool whose description you edited is marked, as the system prompt is
+  it('the Sent tab marks a tool description edited in Settings', () => {
+    open(withRequests((e) => ({ ...e, config: { ...(e.config as Ev), descriptions: ['get_weather'] } })), 0, 'sent')
+    expect(text()).toMatch(/your edits: get_weather/)
+    const row = screen.getAllByText('get_weather', { selector: 'code' })[0].closest('li')!
+    expect(within(row).getByText('edited')).toBeInTheDocument()
+    expect(text()).not.toMatch(/waits for your next conversation/)
+  })
+
+  // F446 / DEV-7: with "From your next conversation", a newer edit says it waits
+  it('the Sent tab says when an edit waits for the next conversation', () => {
+    useServer.setState({ settings: { apply: 'conversation', tools: [{ name: 'get_weather', description: 'A newer description.' }] } as never })
+    useSession.setState({ frozen: true })
+    open(toolTurn, 0, 'sent')
+    expect(text()).toMatch(/Your edits to get_weather wait for your next conversation/)
+    expect(text()).toMatch(/Your newer edit to this description waits for your next conversation/)
+  })
+
+  it('a per-message conversation does not say an edit waits', () => {
+    useServer.setState({ settings: { apply: 'message', tools: [{ name: 'get_weather', description: 'A newer description.' }] } as never })
+    open(toolTurn, 0, 'sent')
+    expect(text()).not.toMatch(/wait for your next conversation/)
+  })
+
+  // F447 / DEV-9: in the sandbox the hooks file is a copy, and the card says so
+  it('the hooks card says when the hooks file is a sandbox copy', () => {
+    const file = 'C:\\Users\\me\\AppData\\Local\\Temp\\harness-sandbox-ab12\\config\\my_hooks.py'
+    open(withRequests((e) => ({ ...e, hooks: { file, functions: ['before_tool'], problem: null } })), 0, 'tools')
+    expect(text()).toMatch(/Loaded from a sandbox copy of config\/my_hooks.py for this message/)
+  })
+
+  it('the hooks card names config/my_hooks.py plainly outside the sandbox', () => {
+    const file = 'C:\\Harness\\config\\my_hooks.py'
+    open(withRequests((e) => ({ ...e, hooks: { file, functions: ['before_tool'], problem: null } })), 0, 'tools')
+    expect(text()).toMatch(/Loaded from config\/my_hooks.py for this message/)
+    expect(text()).not.toMatch(/sandbox copy/)
+  })
+
+  // F447 / DEV-10: Raw says the reply shown is the part the harness reads, not the whole API reply
+  it('Raw labels the reply as the parts the harness reads', () => {
+    open(toolTurn, 0, 'raw')
+    expect(text()).toMatch(/The parts of the API reply the harness reads/)
   })
 })

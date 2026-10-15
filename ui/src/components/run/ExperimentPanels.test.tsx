@@ -262,3 +262,48 @@ describe('the experiment changes chip while a reply runs (F373)', () => {
     usePrefs.setState({ experimentBefore: null })
   })
 })
+
+// F429 (A11Y-10): on a short window (200% zoom, 640 x 360) the hints under the chat fold to one line each
+describe('the area under the chat on a short window (F429)', () => {
+  afterEach(() => usePrefs.setState({ experimentBefore: null }))
+
+  it('"Look at" folds behind a button that opens it', () => {
+    show([])
+    const fold = screen.getByTestId('experiment-lookat-fold')
+    expect(fold.tagName).toBe('BUTTON')
+    expect(fold).toHaveAccessibleName('Where to look')
+    expect(fold).toHaveAttribute('aria-expanded', 'false')
+    // shown only on a short window (the button), and hidden there until opened (the text)
+    expect(fold.className).toMatch(/short:inline-flex/)
+    const text = document.getElementById(fold.getAttribute('aria-controls')!)!
+    expect(text.textContent).toMatch(/^Look at:/)
+    expect(text.className).toMatch(/short:hidden/)
+    fireEvent.click(fold)
+    expect(fold).toHaveAttribute('aria-expanded', 'true')
+    expect(text.className).not.toMatch(/short:hidden/)
+    // the guess stays out in the open
+    expect(screen.getByTestId('experiment-guess').className).not.toMatch(/short:hidden/)
+  })
+
+  it('the experiment-change banner folds to one line and keeps Undo in reach', () => {
+    useUi.setState({ experimentId: null })
+    usePrefs.setState({ experimentBefore: { settings: { limits: { max_tokens: 16000, max_turns: 20 } }, changes: ['longest reply set to 300 tokens'] } })
+    show(toolTurn)
+    const fold = screen.getByTestId('experiment-changes-fold')
+    expect(fold).toHaveAccessibleName('Experiment changed 1 setting')
+    expect(fold).toHaveAttribute('aria-expanded', 'false')
+    const list = document.getElementById(fold.getAttribute('aria-controls')!)!
+    expect(list.textContent).toMatch(/longest reply set to 300 tokens/)
+    expect(list.className).toMatch(/short:hidden/)
+    expect(screen.getByRole('button', { name: /Undo/ }).className).not.toMatch(/short:hidden/)
+    fireEvent.click(fold)
+    expect(fold).toHaveAttribute('aria-expanded', 'true')
+    expect(list.className).not.toMatch(/short:hidden/)
+  })
+
+  it('the key hint goes and the message box stays one line until it has focus', () => {
+    show([])
+    expect(screen.getByTestId('key-hint').className).toMatch(/short:hidden/)
+    expect(screen.getByRole('textbox', { name: 'Message' }).className).toMatch(/short:max-h-9 .*short:focus:max-h-32/)
+  })
+})

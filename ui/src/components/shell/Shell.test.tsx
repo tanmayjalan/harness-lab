@@ -186,7 +186,7 @@ describe('help', () => {
     useUi.setState({ helpOpen: true })
     wrap(<HelpSheet />)
     expect(text()).toMatch(/move between calls in the size chart/)
-    expect(text()).toMatch(/Alt.*previous or next call/)
+    expect(text()).toMatch(/Alt.*previous call \(Alt\+→ for the next one\)/)
   })
 
   // F052: Help can open at a glossary term; the glossary can be filtered

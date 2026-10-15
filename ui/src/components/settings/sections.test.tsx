@@ -466,14 +466,33 @@ describe('Undo for destructive actions (F329)', () => {
     expect(server.getState().profile?.facts).toEqual(facts)
   })
 
-  it('Reset experiment progress can be undone', () => {
-    usePrefs.setState({ experimentsDone: ['loop', 'errors'] })
+  // F449: one button for a first-time learner's view, with one Undo
+  it('Start over as a new learner clears explanations, ticks and quiz answers, and Undo brings them back', async () => {
+    usePrefs.setState({ explained: ['loop'], experimentsDone: ['loop', 'errors'], quizAnswers: { q1: 2 }, inspectHintSeen: true, experimentBefore: null })
     useUi.setState({ toasts: [] })
     wrap(<DisplaySection />)
-    fireEvent.click(screen.getByRole('button', { name: 'Reset experiment progress' }))
-    expect(usePrefs.getState().experimentsDone).toEqual([])
+    expect(screen.queryByRole('button', { name: 'Reset experiment progress' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Start over as a new learner' }))
+    await vi.waitFor(() => expect(usePrefs.getState().experimentsDone).toEqual([]))
+    expect(usePrefs.getState()).toMatchObject({ explained: [], inspectHintSeen: false })
+    expect(usePrefs.getState().quizAnswers).toEqual({})
+    expect(lastToast().title).toBe('Started over as a new learner')
     act(() => { lastToast().action!.run() })
-    expect(usePrefs.getState().experimentsDone).toEqual(['loop', 'errors'])
+    await vi.waitFor(() => expect(usePrefs.getState().experimentsDone).toEqual(['loop', 'errors']))
+    expect(usePrefs.getState()).toMatchObject({ explained: ['loop'], quizAnswers: { q1: 2 }, inspectHintSeen: true })
+  })
+
+  it("Start over puts an experiment's change back first, and clears its Undo", async () => {
+    const before = { settings: { limits: { max_tokens: 16000, max_turns: 20 } }, changes: ['longest reply set to 300 tokens'] }
+    usePrefs.setState({ experimentsDone: ['cutoff'], experimentBefore: before })
+    const saved = vi.spyOn(api, 'saveSettings').mockResolvedValue(baseSettings)
+    useUi.setState({ toasts: [] })
+    wrap(<DisplaySection />)
+    fireEvent.click(screen.getByRole('button', { name: 'Start over as a new learner' }))
+    await vi.waitFor(() => expect(usePrefs.getState().experimentsDone).toEqual([]))
+    expect(saved).toHaveBeenCalledWith(before.settings)
+    expect(usePrefs.getState().experimentBefore).toBeNull()
+    expect(lastToast().body).toMatch(/longest reply set to 300 tokens.*put back/)
   })
 })
 

@@ -8,7 +8,7 @@ import { PRESETS, useCompare } from '../../store/compare'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { useUi } from '../../store/ui'
-import { CompareScreen, MiniChart } from './CompareScreen'
+import { CompareScreen, letThroughWords, MiniChart } from './CompareScreen'
 
 const info = {
   provider: 'mock', model: 'claude-opus-5-5', mode: 'Mock', folder: 'workspace', max_turns: 20,
@@ -477,6 +477,58 @@ describe('second review: Re-run', () => {
     expect(screen.getByRole('button', { name: /Re-run letting Ask-first tools run/ })).toBeInTheDocument()
   })
 
+  // F389: the re-run names every Ask-first tool it lets through, and asks again before running unseen code
+  it('names the tools a re-run lets through, and asks once more when run_python is one', () => {
+    const call = vi.fn()
+    const unattended = { name: 'write_file', input: {}, blocked: true, outcome: 'unattended' }
+    useCompare.setState({ results: rerunOf({}, { tools: [unattended], config: cfgTools({ write_file: 'ask', run_python: 'ask', calculate: 'allow' }) }) })
+    useCompare.setState({ rerun: call as never })
+    show()
+    const retry = screen.getByRole('button', { name: 'Re-run letting Ask-first tools run: write_file and run_python' })
+    expect(text()).toMatch(/Code the model writes will run as you, without you seeing it first, in one run/)
+    fireEvent.click(retry)
+    expect(call).not.toHaveBeenCalled()
+    expect(text()).toMatch(/Let the model's code run without you seeing it first\?/)
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, re-run and let it run' }))
+    expect(call).toHaveBeenCalledWith('conv1', 3, 'write it', true)
+  })
+})
+
+describe('F389: letting Ask-first tools run in a comparison', () => {
+  const withCode = () => {
+    useServer.setState({ settings: { ...settings, run_code: { enabled: true }, tools: [...settings.tools,
+      { ...settings.tools[0], name: 'run_python', permission: 'ask' }] } as Settings })
+    useCompare.getState().setSide(1, { runCode: true })
+    useCompare.setState({ repeat: 3 })
+  }
+
+  it('names the tools, and says code runs unseen up to sides × runs times', () => {
+    withCode()
+    show()
+    const box = screen.getByRole('checkbox', { name: /Let Ask-first tools run for this comparison: run_python/ })
+    expect(box).toHaveAccessibleName(/Code the model writes will run as you, without you seeing it first, in up to 6 runs/)
+    expect(box).not.toHaveAccessibleName(/paths outside the workspace are still refused/)
+  })
+
+  it('names MCP tools and remember_fact for what they are', () => {
+    expect(letThroughWords(['remember_fact', 'notes__add', 'write_file'], 0)).toEqual([
+      'remember_fact: facts the model saves about you are shared in every future conversation.',
+      'notes__add: another program decides what it does.',
+      'write_file: writes really happen; paths outside the workspace are still refused.',
+    ])
+  })
+
+  it('is unticked again after the comparison runs', async () => {
+    vi.spyOn(api, 'compare').mockResolvedValue({ id: 'x', results: [side(), side()], profile_included: false } as never)
+    vi.spyOn(api, 'compareStatus').mockResolvedValue({ running: false } as never)
+    vi.spyOn(api, 'conversations').mockResolvedValue({ current: '', items: [] } as never)
+    useCompare.setState({ text: 'q', allowAsk: true })
+    await act(async () => { await useCompare.getState().run() })
+    expect(useCompare.getState().allowAsk).toBe(false)
+  })
+})
+
+describe('second review: Re-run, continued', () => {
   // F265: what "current settings" covers, said once; facts about you aren't a second, unexplained prompt change
   it('says what current settings covers, and puts a facts change in one row', () => {
     const base = { config: { provider: 'mock', model: 'claude-opus-5-5', permissions: {}, system: 'S', facts_shared: 0 } as never }
