@@ -87,6 +87,20 @@ class ProviderTests(unittest.TestCase):
         self.assertAlmostEqual(providers.cost("mock", usage, "claude-haiku-4-5-20251001"), 1.00 + 5.00)
         self.assertAlmostEqual(providers.cost("mock", usage, "claude-opus-5-5"), 4.00 + 20.00)
 
+    def test_the_mock_prices_sonnet_5_5_at_its_list_price(self):
+        # F379: $2 in / $10 out, cache reads $0.20 (writes 1.25 x input), per million tokens
+        sonnet = providers.price("mock", "claude-sonnet-5-5")
+        self.assertEqual((sonnet["input"], sonnet["output"], sonnet["cached"], sonnet["cache_write"]), (2.00, 10.00, 0.20, 2.50))
+        usage = {"input_tokens": 1_000_000, "output_tokens": 100_000}
+        self.assertAlmostEqual(providers.cost("mock", usage, "claude-sonnet-5-5"), 2.00 + 1.00)
+
+    def test_every_price_says_where_it_comes_from_and_when(self):
+        # F384: the page shows the source and the date beside costs and window sizes
+        for name, p in providers.PROVIDERS.items():
+            source = p.get("source") or {}
+            self.assertTrue(source.get("prices") and source.get("windows"), name)
+            self.assertRegex(source.get("checked", ""), r"^\d{4}-\d{2}-\d{2}$", name)
+
     def test_thinking_styles(self):
         self.assertEqual(providers.thinking_style("anthropic"), "adaptive")
         self.assertEqual(providers.thinking_style("mock"), "budget")

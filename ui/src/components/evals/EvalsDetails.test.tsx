@@ -314,6 +314,37 @@ describe('the chart, by provider', () => {
   })
 })
 
+// F439: the line joins rounds that can be compared, and before/after a settings change is one of them
+describe('the chart, comparable rounds', () => {
+  const points = (c: HTMLElement) => c.querySelector('polyline')!.getAttribute('points')!.trim().split(' ').filter(Boolean)
+  it('joins a default round and a my-settings round of the same questions, and marks them apart', () => {
+    const runs = [run('a', { use_my_settings: false, questions_hash: 'h1' }), run('b', { questions_hash: 'h1', setup: ['thinking on'] })]
+    const { container } = render(<ScoreChart runs={runs} selected="b" onPick={() => {}} />)
+    expect(points(container)).toHaveLength(2)
+    expect(container.querySelectorAll('[data-mark="mine"]')).toHaveLength(1) // your settings: a square
+  })
+  it('does not join rounds with other questions or another number of runs per question', () => {
+    const runs = [run('a', { questions_hash: 'h0' }), run('b', { questions_hash: 'h1', repeat: 3 }), run('c', { questions_hash: 'h1' })]
+    const { container } = render(<ScoreChart runs={runs} selected="c" onPick={() => {}} />)
+    expect(points(container)).toHaveLength(1)
+  })
+})
+
+// F440, F442, F443
+describe('what a round claims, and keeping it', () => {
+  it('says a small drop can be chance, and what the judge sees', () => {
+    wrap(<EvalsScreen />)
+    expect(text()).not.toMatch(/if the pass rate drops, the change made things worse/)
+    expect(text()).toMatch(/a drop of one or two\s+runs can be chance/)
+    expect(text()).toMatch(/The judge sees only the question, its criteria and the final answer/)
+  })
+  it('a round can be downloaded as JSON', () => {
+    useEvals.setState({ viewing: result() })
+    wrap(<Results />)
+    expect(screen.getByRole('button', { name: /Download as JSON/ })).toBeInTheDocument()
+  })
+})
+
 describe('evals behaviour', () => {
   // F349k
   it('a FAIL row says what to do next', () => {

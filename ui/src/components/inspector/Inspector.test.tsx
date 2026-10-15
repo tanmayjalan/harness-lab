@@ -61,7 +61,7 @@ describe('summary', () => {
   // F071, F074: the tiles say what they measure
   it('tiles are named for what they measure', () => {
     open(toolTurn, 1)
-    expect(text()).toMatch(/Model time/)
+    expect(text()).toMatch(/Reply time/) // F383: one name, one meaning
     expect(text()).toMatch(/Cost \(this call\)/)
     expect(text()).toMatch(/Where the time went, from this call to the next/)
   })
@@ -214,10 +214,27 @@ describe('sent and raw', () => {
     expect(text()).toMatch(/entry \d+ of the messages list/)
   })
 
-  // F168
-  it('Raw says the request body is rebuilt from the record', () => {
+  // F168, F377: a conversation saved before the exact request was kept says so, instead of rebuilding one
+  it('Raw says plainly when the exact request was not recorded', () => {
     open(toolTurn, 0, 'raw')
-    expect(text()).toMatch(/rebuilt from the harness's record/)
+    expect(text()).toMatch(/saved before the harness kept the exact request, so it can't be shown/)
+    expect(text()).not.toMatch(/not loaded/)
+  })
+
+  // F377, F381: with the request recorded, Raw shows it as sent (full tool definitions, strict), and on the mock
+  // says the model gets it rewritten
+  it('Raw shows the recorded request body, and on the mock says the model gets it rewritten', () => {
+    const tool = { name: 'pick', description: 'Pick one.', strict: true, input_schema: { type: 'object', properties: {} } }
+    const events = (toolTurn as Ev[]).map((e) => e.kind !== 'request' ? e : {
+      ...e, config: { ...(e.config as Ev), provider: 'mock' },
+      api_body: { model: e.model, max_tokens: 16000, system: e.system, tools: [tool] } })
+    open(events, 0, 'raw')
+    expect(text()).toMatch(/The request body exactly as the harness sent it/)
+    expect(text()).toMatch(/the model doesn't get it in this form/)
+    expect(text()).toMatch(/characters of system prompt, tools and messages \(counted as in the Summary\)/)
+    fireEvent.click(screen.getByRole('button', { name: 'Open all' }))
+    expect(text()).toMatch(/strict/)
+    expect(text()).toMatch(/input_schema/)
   })
 })
 

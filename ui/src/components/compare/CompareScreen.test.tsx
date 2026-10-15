@@ -570,7 +570,28 @@ describe('deltas', () => {
     show()
     expect(text()).toMatch(/−0\.7 ?s/)
     expect(text()).not.toMatch(/\(better\)/)
-    expect(screen.getAllByTitle(/Too few runs or too small a change to call better or worse\./).length).toBeGreaterThan(0)
+    expect(screen.getAllByTitle(/Too few runs to call better or worse/).length).toBeGreaterThan(0)
+    // F441: no arrow on a single-run difference, and the reason is on the page, not only in a tooltip
+    expect(screen.getAllByTitle(/than side A/).every((el) => !el.querySelector('svg'))).toBe(true)
+    expect(text()).toMatch(/One run per side: a model answers differently from run to run/)
+  })
+
+  it('with three runs a big difference whose ranges overlap is not called better', () => {
+    const stats = (median: number, min: number, max: number) => ({ runs: 3, seconds: { median, min, max },
+      tokens_read: { median: 1000, min: 1000, max: 1000 }, tokens_written: { median: 40, min: 40, max: 40 }, cost: null,
+      same_answer: 3, answered: 3, same_tools: 3, tools: [[], [], []], errors: 0, answers: ['a', 'a', 'a'] })
+    useCompare.setState({ results: { kind: 'compare', text: 'q', profileIncluded: false,
+      sides: [side({ stats: stats(10, 4, 12) }), side({ label: 'B', stats: stats(5, 3, 9) })] } })
+    show()
+    expect(text()).not.toMatch(/\(better\)/)
+    expect(screen.getAllByTitle(/runs overlap, so it isn't called better or worse/).length).toBeGreaterThan(0)
+  })
+
+  // F442: a comparison can be kept as a file
+  it('results can be downloaded as JSON', () => {
+    useCompare.setState({ results: { kind: 'compare', text: 'q', sides: [side({}), side({ label: 'B' })], profileIncluded: false } })
+    show()
+    expect(screen.getByRole('button', { name: /Download as JSON/ })).toBeInTheDocument()
   })
 
   it('with three runs and a big difference it is called better or worse', () => {
