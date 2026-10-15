@@ -245,6 +245,15 @@ class ExampleHooksFileTests(unittest.TestCase):
         self.assertIsNone(self.h.before("run_python", {"code": "print(1 + 1)"}))
         self.assertIsNone(self.h.before("run_python", {"path": "scripts/totals.py"}))
 
+    def test_a_script_file_is_checked_too(self):
+        # F388: the same check reads a script run by path, not only code the model wrote
+        script = pathlib.Path(tools.WORKSPACE) / "cleanup.py"
+        self.addCleanup(script.unlink, missing_ok=True)
+        script.write_text("import shutil\nshutil.rmtree('somewhere')\n", encoding="utf-8")
+        self.assertIn("shutil.rmtree", self.h.before("run_python", {"path": "cleanup.py"}))
+        script.write_text("print('fine')\n", encoding="utf-8")
+        self.assertIsNone(self.h.before("run_python", {"path": "cleanup.py"}))
+
     def test_what_a_script_printed_is_marked_untrusted(self):
         self.assertTrue(self.h.after("run_python", {"code": "print(open('notes.md').read())"}, "text").startswith(
             "[Untrusted content"))

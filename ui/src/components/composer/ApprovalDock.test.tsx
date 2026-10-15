@@ -105,6 +105,21 @@ describe('ApprovalDock', () => {
     expect(screen.getByRole('checkbox', { name: /future facts are saved and shared without asking you/ })).toBeInTheDocument()
   })
 
+  // F388: a script run by path shows what the file says, as code the model wrote does
+  it('shows what a script file says before you allow it', () => {
+    render(<ApprovalDock approval={approval({ tool: 'run_python', input: { path: 'scripts/x.py' }, path: 'scripts/x.py',
+      content: '', where: 'C:\\lab\\workspace\\scripts\\x.py', script: { text: "print('hi')", cut: false } })} row={row} />)
+    expect(screen.getByText('C:\\lab\\workspace\\scripts\\x.py')).toBeInTheDocument()
+    expect(screen.getByText("print('hi')")).toBeInTheDocument()
+    expect(screen.getByText(/the file as it is now\. It could still change before it runs/)).toBeInTheDocument()
+  })
+
+  it("says so when a script file can't be read", () => {
+    render(<ApprovalDock approval={approval({ tool: 'run_python', input: { path: 'gone.py' }, path: 'gone.py', content: '',
+      script: { error: "can't be read (No such file or directory)" } })} row={row} />)
+    expect(screen.getByText(/The file can't be read \(No such file or directory\), so you can't see what it would run/)).toBeInTheDocument()
+  })
+
   // F279: where a file really goes, from the server, not the prompt's wording
   it('shows where the file really goes', () => {
     render(<ApprovalDock approval={approval({ path: 'todo.txt', where: 'C:\\lab\\workspace\\todo.txt' })} row={row} />)

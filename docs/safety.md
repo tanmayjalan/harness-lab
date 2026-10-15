@@ -17,7 +17,9 @@ are refused there.
 ## Running code is not a sandbox
 
 `run_python` is off until you turn on **Settings → Tools → Run code**, and it asks first, showing you the
-code. A script runs as you: it can read or change any of your files and reach the internet. The harness only:
+code: the code the model wrote, or, for a script file in the workspace, what the file says at that moment (it
+could still change before it runs). A script runs as you: it can read or change any of your files and reach the
+internet. The harness only:
 
 - starts it in `workspace/`;
 - stops it after 10 seconds or when you press Stop (and anything it started, if it is still running then);
@@ -33,7 +35,8 @@ before you click Allow.**
 The example [`config/my_hooks.py`](../config/my_hooks.py):
 
 - blocks paths that look like secrets (try `Read private/.env`; the values in it are fake);
-- blocks code that mentions `shutil.rmtree`, `os.remove` or `subprocess` (a text check, easy to get around);
+- blocks code that mentions `shutil.rmtree`, `os.remove` or `subprocess`, in code the model wrote or in a
+  script file it asks to run (a text check, easy to get around);
 - logs every call to `data/tool_log.txt`;
 - puts an "untrusted content" line in front of what `read_file`, `get_weather` and `run_python` return, so the
   model treats instructions inside files and web data as text, not orders.
@@ -56,9 +59,17 @@ conversation. Compare, Re-run and evals keep no checkpoints, and the terminal ha
 every workspace file, `private/.env` included. They stay in `data/checkpoints/` on this computer only
 (`data/` is never in git).
 
+## The mock answers only the harness
+
+The mock runs `claude -p` on your Claude Code plan, and any web page you visit can send requests to programs
+on your computer. So the mock answers a request only if it is addressed to this computer (127.0.0.1), is sent
+as JSON, and carries the mock's key: a random key made each time the lab starts it, which only the harness
+knows. The lab's own web server already refuses requests addressed to any other name.
+
 ## What leaves your computer
 
-- **Everything the model reads is sent to the provider.** With DeepSeek, that means DeepSeek's servers.
+- **Everything the model reads is sent to the provider.** With the mock, that means Anthropic, under your
+  Claude Code login; with DeepSeek, DeepSeek's servers.
 - **`get_weather` uses the internet:** it sends the city name to open-meteo.com (free, no key) and shows the
   exact web requests in its result. No other built-in tool goes online (a script `run_python` runs can).
 
