@@ -5,7 +5,7 @@ import type { CompareSide, Effort, Rule, RunStats, Spread } from '../../api/type
 import { cn } from '../../lib/cn'
 import { downloadJson } from '../../lib/download'
 import { undoToast } from '../../lib/undoToast'
-import { approx, dollars, ESTIMATE_TITLE, plural, seconds, shortArgs, timeAgo, tokens } from '../../lib/format'
+import { approx, cost as costText, dollars, ESTIMATE_TITLE, plural, seconds, shortArgs, timeAgo, tokens, tokensOut } from '../../lib/format'
 import { configDiff, thinkingWords } from '../../model/configDiff'
 import { RULES } from '../../model/permission'
 import { PRESETS, useCompare, type SideSpec } from '../../store/compare'
@@ -588,13 +588,13 @@ function ResultCard({ side, base, letter, rerun }: { side: CompareSide; base: Co
             <Stat label={`Tokens in${runs}`}><span title={est ? ESTIMATE_TITLE : undefined}>{approx(tokens(figure(side, 'tokens_read') ?? 0), est)}</span>
               <Delta value={figure(side, 'tokens_read') ?? 0} base={base ? figure(base, 'tokens_read') : null} comparable={comparable} runs={runCount} format={tokens}
                 range={side.stats?.tokens_read} baseRange={base?.stats?.tokens_read} estimated={est} /></Stat>
-            <Stat label={`Tokens out${runs}`}><span title={est ? ESTIMATE_TITLE : undefined}>{approx(tokens(figure(side, 'tokens_written') ?? 0), est)}</span>
+            <Stat label={`Tokens out${runs}`}><span title={est ? ESTIMATE_TITLE : undefined}>{tokensOut(figure(side, 'tokens_written') ?? 0, est)}</span>
               <Delta value={figure(side, 'tokens_written') ?? 0} base={base ? figure(base, 'tokens_written') : null} comparable={comparable} runs={runCount} format={tokens}
                 range={side.stats?.tokens_written} baseRange={base?.stats?.tokens_written} estimated={est} /></Stat>
           </>
         ) : <div className="col-span-2 rounded-md bg-sunken px-2.5 py-1.5 text-xs text-muted">No token counts from this provider.</div>}
         {cost != null && (
-          <Stat label={`Cost${runs}`}><span title={est ? ESTIMATE_TITLE : undefined}>{approx(dollars(cost), est)}</span>
+          <Stat label={`Cost${runs}`}><span title={est ? ESTIMATE_TITLE : undefined}>{costText(cost, est)}</span>
             <Delta value={cost} base={base ? figure(base, 'cost') : null} comparable={comparable} runs={runCount} format={dollars}
               range={side.stats?.cost} baseRange={base?.stats?.cost} estimated /></Stat>
         )}
