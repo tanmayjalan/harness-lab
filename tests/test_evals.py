@@ -17,6 +17,27 @@ def result(tools=(), answer="", **extra):
 
 
 class CheckTests(unittest.TestCase):
+    def test_answer_has_matches_a_whole_word_or_number(self):
+        # F443: a plain piece of text let "30" pass "300" and "2030"
+        for answer, expected, found in [
+                ("Customers have **30 days**.", "30", True), ("about 300 days", "30", False), ("in 2030", "30", False),
+                ("30.5 days", "30", False), ("30,000 users", "30", False), ("38.50 EUR", "38.5", True),
+                ("17% of 2,450 is **416.5**.", "416.5", True), ("$312.75 left", "312.75", True),
+                ("Paris", "paris", True), ("Parisian food", "Paris", False), ("see `notes.md`.", "notes.md", True),
+                ("212°F", "212", True)]:
+            self.assertEqual(evals.mentions(answer, expected), found, (answer, expected))
+        self.assertEqual(evals.check({"tools": [], "answer_has": ["30"]}, result(answer="It costs 300.")),
+                         ["answer doesn't mention '30'"])
+
+    def test_rounds_checked_another_way_get_another_fingerprint(self):
+        # F439: the chart joins only rounds with the same questions, checked the same way
+        cases = [{"question": "What is 2+2?", "tools": [], "answer_has": ["4"]}]
+        same = evals.questions_hash(cases)
+        self.assertEqual(evals.questions_hash([dict(c) for c in cases]), same)
+        self.assertNotEqual(evals.questions_hash([{**cases[0], "answer_has": ["5"]}]), same)
+        with unittest.mock.patch.object(evals, "CHECKS_VERSION", evals.CHECKS_VERSION + 1):
+            self.assertNotEqual(evals.questions_hash(cases), same)
+
     def test_pass_needs_the_tools_and_the_answer(self):
         case = {"tools": ["calculate"], "answer_has": ["416.5"]}
         self.assertEqual(evals.check(case, result(["calculate"], "It's 416.5")), [])
