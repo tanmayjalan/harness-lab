@@ -2,7 +2,7 @@
 import { ArrowDown } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Run } from '../../model/derive'
-import { useInspectedCallId } from '../../store/selectors'
+import { callDivider, useInspectedCallId } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { useUi } from '../../store/ui'
@@ -12,7 +12,8 @@ import { Composer, type ComposerHandle } from '../composer/Composer'
 import { ApprovalDock } from '../composer/ApprovalDock'
 import { Button, Callout, Skeleton } from '../ui'
 import { EmptyState } from './EmptyState'
-import { ExperimentChanges, ExperimentHeader, ExperimentNow, ExperimentReveal } from './ExperimentPanels'
+import { ExperimentChanges, ExperimentHeader, ExperimentNow, ExperimentReveal, revealWords } from './ExperimentPanels'
+import { stopWords } from '../../lib/stopWords'
 import { Timeline } from './Timeline'
 
 const nearBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 120
@@ -56,9 +57,29 @@ export function RunView({ composerRef, onRerun, onRewind }:
   useLayoutEffect(() => {
     stick.current = runs > 0
     const el = scroller.current
+    // F429: back from the narrow Inspect view: the same place, and focus on the call you picked
+    const place = useUi.getState().chatPlace
+    if (place) useUi.getState().setChatPlace(null)
+    if (el && place && place.conversation === conversation && place.runs === runs) {
+      el.scrollTop = place.top
+      stick.current = nearBottom(el)
+      measure()
+      const ui = useUi.getState()
+      if (!ui.followLatest) callDivider(ui.selectedCallId)?.focus({ preventScroll: true })
+      return
+    }
     if (el) el.scrollTop = runs > 0 ? el.scrollHeight : 0
     measure()
   }, [conversation, runs])
+  // F429: the narrow Inspect view replaces the chat: keep its place for coming back
+  const top = useRef(0)
+  useLayoutEffect(() => () => {
+    const ui = useUi.getState()
+    if (ui.mobilePane === 'inspect') {
+      const s = useSession.getState()
+      ui.setChatPlace({ conversation: s.conversation, runs: s.derived.runs.length, top: top.current })
+    }
+  }, [])
 
   // Content can also change size by itself (an explanation closing, a tool row opening)
   useEffect(() => {
@@ -102,21 +123,50 @@ export function RunView({ composerRef, onRerun, onRewind }:
   const watched = useRef(new Set<string>())
   const last = model.runs[model.runs.length - 1]
   if (running) watched.current.add(`${conversation}:${last && last.outcome === 'running' ? last.index : model.runs.length + 1}`)
+  // F428: and so is a message that stops (Stop, or the call limit), with an experiment's reveal in the same
+  // sentence (two in a row would cut each other off). A failure isn't: its own alert reads it out
   const said = useRef(new Set<string>())
+  const say = (text: string) => setAnnounce((a) => `${text}${a.endsWith('\u200b') ? '' : '\u200b'}`)
   useEffect(() => {
-    if (!last?.answer) return
+    if (!last || last.outcome === 'running') return
     const key = `${conversation}:${last.index}`
     if (!watched.current.has(key) || said.current.has(key)) return
     said.current.add(key)
     const n = last.callIds.length
-    setAnnounce((a) => `Reply received (${n} ${n === 1 ? 'call' : 'calls'})${a.endsWith('\u200b') ? '' : '\u200b'}`)
+    const limit = (last.errorDetail ?? last.error ?? '').match(/hit max_turns \((\d+)\)/)
+    const what = last.answer ? `Reply received (${n} ${n === 1 ? 'call' : 'calls'}).`
+      : last.outcome === 'stopped' ? 'Stopped. The conversation so far is kept.'
+        : limit ? `Stopped: this message reached the limit of ${limit[1]} model calls. The conversation so far is kept.` : ''
+    const text = `${what} ${revealWords(model)}`.trim()
+    if (text) say(text)
   }, [last, conversation])
+  // F428: while it runs, say each call as it comes back ("Call 1: asked for 2 tools"), so the wait isn't silent.
+  // Not the one that finishes: "Reply received" says that
+  const callsBack = useRef(new Set<string>())
+  useEffect(() => {
+    if (!running || !last || last.outcome !== 'running') return
+    if (!watched.current.has(`${conversation}:${last.index}`)) return
+    for (const id of last.callIds) {
+      const c = model.calls[id]
+      if (!c || callsBack.current.has(id) || (!c.stopReason && !c.failed)) continue
+      callsBack.current.add(id)
+      const asked = (c.response?.content ?? []).filter((b) => b.type === 'tool_use').length
+      if (c.stopReason === 'tool_use') say(`Call ${c.turn}: ${stopWords(c.stopReason, Math.max(asked, c.toolIds.length))}.`)
+    }
+    // the reply starting to stream in (once per message: the text itself isn't read out as it grows)
+    const writing = `${conversation}:${last.index}:writing`
+    if (live && !callsBack.current.has(writing)) {
+      callsBack.current.add(writing)
+      say('The model is writing its reply.')
+    }
+  }, [model, running, last, conversation, live])
   const empty = loaded && model.runs.length === 0
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div ref={scroller} className="relative min-h-0 flex-1 overflow-y-auto"
         onScroll={(e) => {
+          top.current = e.currentTarget.scrollTop
           const b = nearBottom(e.currentTarget)
           stick.current = b
           setAtBottom(b)

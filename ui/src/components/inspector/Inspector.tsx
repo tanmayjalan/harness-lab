@@ -47,9 +47,17 @@ export function Inspector({ onClose }: { onClose?: () => void }) {
   const scroller = useRef<HTMLDivElement>(null)
   const shownId = view?.call.id
   useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0 }, [shownId])
+  // F426: you picked a call in the chat: focus comes here, on the call picker, which says which call it is
+  const focusHere = useUi((s) => s.focusInspector)
+  const panel = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!focusHere) return
+    useUi.getState().setFocusInspector(false)
+    ;(panel.current?.querySelector<HTMLElement>('select') ?? panel.current)?.focus()
+  }, [focusHere])
 
   return (
-    <aside aria-label="Inspector" className="flex h-full min-h-0 flex-col bg-panel">
+    <aside ref={panel} id="inspector" tabIndex={-1} aria-label="Inspector" className="flex h-full min-h-0 flex-col bg-panel outline-none">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
         {/* with a call shown the picker needs the room: the title is for screen readers only (the panel is labelled),
             and a narrow panel also drops the count and shows the follow control as an icon */}

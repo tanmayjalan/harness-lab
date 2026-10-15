@@ -10,7 +10,7 @@ import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { useCurrentProvider } from './EmptyState'
 import type { Run, RunModel } from '../../model/derive'
-import { usePrefs, useUi } from '../../store/ui'
+import { say, usePrefs, useUi } from '../../store/ui'
 import { cn } from '../../lib/cn'
 import { askThenPick } from './EmptyState'
 
@@ -78,10 +78,16 @@ export function ExperimentNow({ model }: { model: RunModel }) {
         <div data-testid="experiment-guess" className="space-y-1">
           <p className="font-medium">Before you send, guess: {x.predict.question}</p>
           <div ref={first}>
-            <RadioRow label="Your guess" value={guess} options={x.predict.options.map((o) => [o, o])}
+            {/* F430: the group carries the question (focus lands on its first choice), and the pick is confirmed
+                out loud, since focus moves on to the message box */}
+            <RadioRow label={`Your guess: ${x.predict.question}`} value={guess} options={x.predict.options.map((o) => [o, o])}
               className="gap-1.5 border-0 p-0"
               itemClass={(_, on) => chipClass({ selected: on, interactive: true })}
-              onChange={(o) => { useUi.getState().setGuess(o); document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus() }} />
+              onChange={(o) => {
+                useUi.getState().setGuess(o)
+                say(`Your guess: ${o}. Now send the message.`)
+                document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus()
+              }} />
           </div>
         </div>
       )}
@@ -91,6 +97,17 @@ export function ExperimentNow({ model }: { model: RunModel }) {
   )
 }
 
+// F428: the reveal in one sentence, read out with the reply ("" when there is none for the newest message)
+export function revealWords(model: RunModel) {
+  const x = findExperiment(useUi.getState().experimentId)
+  const run = x ? experimentRun(model, x) : null
+  if (!x || !finishedRun(run) || run !== model.runs[model.runs.length - 1]) return ''
+  const guess = useUi.getState().guess
+  const actual = x.predict?.actual(model, run)
+  const result = !x.predict ? '' : guess ? ` You guessed ${guess}; it was ${actual}.${guess === actual ? ' Right!' : ''}` : ` It was ${actual}.`
+  return `Experiment ${x.title}.${result} What it showed is under the reply.`
+}
+
 // Under the answer: the guess checked, what it showed, what to try next
 export function ExperimentReveal({ model }: { model: RunModel }) {
   const { x, run, latest } = useExperiment(model)
@@ -98,9 +115,9 @@ export function ExperimentReveal({ model }: { model: RunModel }) {
   if (!x || !latest || !finishedRun(run)) return null
   return (
     <Callout tone="info" data-testid="experiment-reveal" className="mt-4 space-y-1.5">
-      <div className="flex items-center gap-1.5 font-medium">
+      <h2 className="flex items-center gap-1.5 font-medium">
         <FlaskConical className="size-4 shrink-0 text-accent" aria-hidden /> {x.title}: what happened
-      </div>
+      </h2>
       {x.predict && (
         <p className={cn('rounded-md px-2 py-1', guess ? (guess === x.predict.actual(model, run) ? 'bg-ok-soft' : 'bg-warn-soft') : 'bg-panel/70')}>
           {run.index > 1 && <b>Message {run.index}: </b>}<Result x={x} model={model} run={run} guess={guess} />{' '}

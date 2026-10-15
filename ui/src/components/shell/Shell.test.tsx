@@ -149,8 +149,13 @@ describe('top bar', () => {
     useUi.setState({ screen: 'compare' })
     wrap(<TopBar narrow={false} />)
     const b = screen.getByRole('button', { name: 'Inspector' })
-    expect(b).toBeDisabled()
+    // F433: aria-disabled, so Tab still reaches it and its reason; a click does nothing
+    expect(b).not.toBeDisabled()
+    expect(b).toHaveAttribute('aria-disabled', 'true')
     expect(b).toHaveAccessibleDescription('The inspector shows model calls in a conversation')
+    const before = usePrefs.getState().inspectorOpen
+    fireEvent.click(b)
+    expect(usePrefs.getState().inspectorOpen).toBe(before)
   })
 
   // F193, F112: the status is in words at every width
@@ -568,7 +573,7 @@ describe('shell accessibility (F309 F310 F310a F310b F310d)', () => {
     fireEvent.click(conv)
     expect(conv).toHaveAttribute('aria-expanded', 'false')
     // before the first model call there is nothing to inspect: the toggle waits
-    expect(screen.getByRole('button', { name: 'Inspector' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Inspector' })).toHaveAttribute('aria-disabled', 'true')
     act(() => usePrefs.setState({ inspectorOpen: true }))
     act(() => useSession.setState({ derived: deriveRuns(declined as HarnessEvent[]) }))
     const insp = screen.getByRole('button', { name: 'Inspector' })
