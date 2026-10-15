@@ -74,12 +74,34 @@ export type SeriesPoint = {
   summarisedBefore: boolean
 }
 
-const toolChars = (call: Call) =>
-  (call.request.tools ?? []).reduce((n, t) => n + t.name.length + t.description.length, 0)
+// The size of a request, counted one way everywhere (the Summary, the "made of" bar, Raw and the mock's token
+// estimate, harness/core/mock_server.py sent_chars): the system prompt's text, plus the tools and the messages as
+// compact JSON (no spaces), exactly as sent. Runs saved before the full request was recorded have only the tool
+// names and descriptions, so their tools are counted from those (`toolsRecorded` says which)
+export const toolsRecorded = (call: Call) => !!call.request.api_body
 
-// Everything a call sends: system prompt, tool names and descriptions, and the messages
+export function toolChars(call: Call) {
+  const sent = call.request.api_body
+  if (sent) return sent.tools ? JSON.stringify(sent.tools).length : 0
+  return (call.request.tools ?? []).reduce((n, t) => n + t.name.length + t.description.length, 0)
+}
+
 export function sentChars(call: Call) {
   return JSON.stringify(call.request.messages).length + (call.request.system?.length ?? 0) + toolChars(call)
+}
+
+// The whole request body as the loop sent it (api_body with the messages in their place), or null for a run saved
+// before it was recorded
+export function sentBody(call: Call): Record<string, unknown> | null {
+  const b = call.request.api_body
+  if (!b) return null
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(b)) {
+    if ((k === 'thinking' || k === 'output_config') && !('messages' in out)) out.messages = call.request.messages // (the loop's own order)
+    out[k] = v
+  }
+  if (!('messages' in out)) out.messages = call.request.messages
+  return out
 }
 
 // Where one call's time went: the model's reply (and, on the mock, starting claude -p), then the
@@ -117,21 +139,21 @@ export function callTiming(m: RunModel, call: Call): Timing {
 
 export type Part = { key: 'system' | 'tools' | 'earlier' | 'results' | 'new'; label: string; chars: number }
 
-// What one call is made of, in characters: the parts that go every time, and what's new
+// What one call is made of, in characters (counted as sentChars counts them): the parts that go every time, and what's new
 export function breakdown(view: CallView): Part[] {
   const { call } = view
   let earlier = 0
   let results = 0
   let fresh = 0
   for (const m of view.messages) {
-    const size = JSON.stringify(m.message.content).length
+    const size = JSON.stringify(m.message).length
     if (!m.isNew) earlier += size
     else if (Array.isArray(m.message.content) && m.message.content.some((b) => b.type === 'tool_result')) results += size
     else fresh += size
   }
   return [
     { key: 'system', label: 'system prompt', chars: call.request.system?.length ?? 0 },
-    { key: 'tools', label: 'tool descriptions', chars: toolChars(call) },
+    { key: 'tools', label: toolsRecorded(call) ? 'tool definitions' : 'tool names and descriptions', chars: toolChars(call) },
     { key: 'earlier', label: 'earlier entries', chars: earlier },
     { key: 'results', label: 'new tool results', chars: results },
     { key: 'new', label: 'new entries', chars: fresh },

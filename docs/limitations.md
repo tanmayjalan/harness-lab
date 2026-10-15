@@ -4,7 +4,13 @@
 
 The mock gets real replies from `claude -p`, but it isn't the API, so some things are imitated:
 
-- **Token counts** are estimates (about 4 characters per token), marked ≈ in the page.
+- **Token counts** are estimates (about 4 characters per token), marked ≈ in the page. Tokens out leave out
+  thinking (`claude -p` doesn't return its text), so tokens out and cost are a lower bound; the page shows
+  `claude -p`'s own count, thinking included, beside them when it has one.
+- **The request the model receives** isn't the one in the Raw tab. The mock writes the system prompt, the tool
+  definitions and the conversation into one text prompt for `claude -p`, asks for the reply in a fixed JSON
+  shape, and makes up the ids of tool requests. The Raw tab shows what the harness sent to the mock, which is
+  what it would send to the real API.
 - **The longest-reply limit** is applied by the mock cutting the reply text; the real API stops the model
   itself. The lesson (stop reason `max_tokens`, half-finished tool requests) is the same.
 - **Prompt caching** doesn't happen on the mock.

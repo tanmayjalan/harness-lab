@@ -3,14 +3,16 @@ r"""Score providers on a fixed set of questions (evals.json).
     .venv\Scripts\python -m harness.evals --provider mock
     .venv\Scripts\python -m harness.evals --provider mock --provider deepseek
     .venv\Scripts\python -m harness.evals --provider mock --only weather    # questions mentioning "weather"
-    .venv\Scripts\python -m harness.evals --provider mock --use-my-settings # with your Tools-tab edits
+    .venv\Scripts\python -m harness.evals --provider mock --use-my-settings # with all your settings and hooks
     .venv\Scripts\python -m harness.evals --provider mock --judge none      # skip the judge (fewer calls)
     .venv\Scripts\python -m harness.evals --provider mock --repeat 3        # each question 3 times: pass rates
     .venv\Scripts\python -m harness.evals --provider mock --model claude-haiku-4-5-20251001   # another model
 
 The questions are in config/evals.json.
 
-Each question gets a fresh conversation. It passes if the model used the
+Each question gets a fresh conversation, set up exactly as Compare sets up a side (compare.setup): with
+--use-my-settings, every setting applies (thinking, caching, limits, skills, the workflow...) and your hooks
+run; with the defaults, neither does. It passes if the model used the
 tools it should (and only those, when the list is empty), where the
 answer is fixed the answer contains the expected text, and where an
 answer has no single right text, a second model (the judge, by default
@@ -23,6 +25,7 @@ pass rates over several runs (--repeat), not a single score: a model can pass
 a question one time and fail it the next, so one run can mislead.
 """
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -37,6 +40,18 @@ from harness import paths
 from harness.words import plural
 from harness.core import providers
 
+
+
+# Goes up when the checking itself changes, so rounds checked differently aren't joined on the chart
+# (2: answer_has matches a whole word or number, not any piece of text)
+CHECKS_VERSION = 2
+
+
+def mentions(answer, expected):
+    """Whether the answer has `expected` as a whole word or number, ignoring case: "30" is in "30 days" but not in
+    "300", "2030" or "30.5"; a decimal may carry trailing zeros ("38.5" is in "38.50")."""
+    zeros = "0*" if re.fullmatch(r"\d+\.\d+", expected) else ""
+    return re.search(rf"(?<![\w.]){re.escape(expected)}{zeros}(?![.,]?\d)(?!\w)", answer or "", re.IGNORECASE) is not None
 
 
 def check(case, result):
@@ -59,7 +74,7 @@ def check(case, result):
     if only_failed:  # so whatever the answer says, it didn't come from the tool
         problems.append(f"{', '.join(sorted(only_failed))} failed every time it ran")
     expected = case.get("answer_has")
-    if expected and not any(e.lower() in (result.get("answer") or "").lower() for e in expected):
+    if expected and not any(mentions(result.get("answer"), e) for e in expected):
         problems.append(f"answer doesn't mention {' or '.join(repr(e) for e in expected)}")
     return problems
 
@@ -99,26 +114,44 @@ def judge(case, result, provider, clients=None):
     return m.group(1).upper() == "PASS", m.group(2).strip() or line
 
 
+def side_for(provider, model=None, use_my_settings=False, settings_path=None, clients=None):
+    """How every question of a round is run: compare.setup, as for a side of a comparison. With your settings,
+    all of them apply and your hooks run; with the defaults, neither. (The web page passes its own `side`, with
+    its MCP tools; this one is for the command line, which has only the built-in tools.)"""
+    model = model or providers.PROVIDERS[provider]["model"]
+    settings = lab_settings.load(settings_path) if use_my_settings else lab_settings.empty()
+    settings = lab_settings.clean(settings, loop.SYSTEM, tools.TOOLS, loop.default_permission)
+    return compare.setup(provider, model, settings, client=client_for(provider, clients), use_hooks=use_my_settings)
+
+
+def setup_words(side, settings_changed):
+    """What a round's setup was, for its label: your setting changes, plus your hooks and any tools from MCP
+    programs, which the settings list doesn't know about."""
+    out = list(settings_changed)
+    names = side["hooks"].names() if side.get("hooks") else []
+    if names:
+        out.append(f"your hooks ({', '.join(names)})")
+    mcp = [t for t in (side.get("config") or {}).get("tools") or [] if t.get("source", "built in") != "built in"]
+    if mcp:
+        out.append(plural(len(mcp), "tool") + " from MCP programs")
+    return out
+
+
 def run(provider, cases, use_my_settings=False, workers=3, judge_with=None, model=None, settings_path=None,
-        clients=None, on_result=None, cancel=None, save=False, run_id=None):
+        clients=None, on_result=None, cancel=None, save=False, run_id=None, side=None):
     """Each case in a fresh conversation, a few at a time. `on_result(index, result)` is told as each finishes.
     Once `cancel` (an Event) is set, cases not yet started are skipped ({"skipped": True}). With `save`, each
     run is kept as a conversation tagged "eval", so it can be opened in the page. With `run_id` (the round's id), each
-    also remembers its round, its question and which attempt it was, so the page can link back."""
-    settings = lab_settings.load(settings_path) if use_my_settings else lab_settings.empty()
-    client = client_for(provider, clients)
-    model = model or providers.PROVIDERS[provider]["model"]
+    also remembers its round, its question and which attempt it was, so the page can link back. `side`: how each
+    question runs (compare.setup); by default side_for's."""
+    side = side or side_for(provider, model, use_my_settings, settings_path, clients)
+    args = {k: v for k, v in side.items() if k != "provider"}
 
     def one(item):
         index, case = item
         if cancel is not None and cancel.is_set():
             return {"skipped": True}
-        result = compare.run_one(client, model, case["question"],
-                                 system=lab_settings.system_prompt(settings, loop.SYSTEM),
-                                 tools=providers.tools_for(provider, lab_settings.offered_tools(settings, tools.TOOLS)),
-                                 extra_tools=lab_settings.extra_tools(settings),  # the 40 office tools, if on
-                                 permission=lab_settings.permission(settings, loop.default_permission),
-                                 cost=lambda usage: providers.cost(provider, usage, model))
+        result = compare.run_one(text=case["question"], **args)
         events, messages = result.pop("events", None), result.pop("messages", None)
         if save and events is not None:
             conv_id = conversations.new_id()
@@ -164,11 +197,24 @@ def checked(case, judge_on=True):
     return out
 
 
+def questions_hash(cases):
+    """A short fingerprint of a question set and what each question checks: rounds are comparable only when it
+    matches (CHECKS_VERSION goes up when the checking itself changes)."""
+    keep = [{k: c.get(k) for k in ("question", "tools", "answer_has", "judge", "tool_may_not_work")} for c in cases]
+    text = json.dumps([CHECKS_VERSION, keep], sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
 def run_suite(provider, cases, model=None, repeat=1, use_my_settings=False, judge_with=None, settings_path=None,
-              clients=None, on_progress=None, cancel=None, only=None, run_id=None):
+              clients=None, on_progress=None, cancel=None, only=None, run_id=None, side=None, settings_changed=None):
     """Every case `repeat` times. Returns per-question pass rates, reasons and figures, plus the setup.
-    Stopped part-way (`cancel` set), it returns what finished, marked `incomplete`."""
+    Stopped part-way (`cancel` set), it returns what finished, marked `incomplete`. `side`: how each question
+    runs (compare.setup), with `settings_changed` its settings in words; by default side_for's."""
     model = model or providers.PROVIDERS[provider]["model"]
+    if side is None:
+        side = side_for(provider, model, use_my_settings, settings_path, clients)
+        settings = lab_settings.load(settings_path) if use_my_settings else lab_settings.empty()
+        settings_changed = lab_settings.what_changed(settings) if use_my_settings else []
     repeated = [{**c, "_attempt": n + 1} for c in cases for n in range(repeat)]
     done = [0]
 
@@ -178,7 +224,7 @@ def run_suite(provider, cases, model=None, repeat=1, use_my_settings=False, judg
             on_progress(done[0], len(repeated))
 
     results = run(provider, repeated, use_my_settings, judge_with=judge_with, model=model, settings_path=settings_path,
-                  clients=clients, on_result=progress, cancel=cancel, save=True, run_id=run_id)
+                  clients=clients, on_result=progress, cancel=cancel, save=True, run_id=run_id, side=side)
     rows = []
     for i, case in enumerate(cases):
         runs = [r for r in results[i * repeat:(i + 1) * repeat] if not r.get("skipped")]
@@ -202,11 +248,15 @@ def run_suite(provider, cases, model=None, repeat=1, use_my_settings=False, judg
             "cost": [r.get("cost") for r in runs], "answers": [r.get("answer") for r in runs],
             "errors": [r.get("error") for r in runs],
         })
-    settings = lab_settings.load(settings_path) if use_my_settings else lab_settings.empty()
     return {
         "provider": provider, "label": providers.PROVIDERS[provider]["label"], "model": model, "repeat": repeat,
         "use_my_settings": use_my_settings, "judge": judge_with,
-        "setup": lab_settings.what_changed(settings) if use_my_settings else [],
+        "setup": setup_words(side, settings_changed or []),
+        # Enough to see later exactly what the round ran with (F442): the prompt sent, the tools and their rules,
+        # every setting, the questions' fingerprint and the judge's instructions
+        "config": side.get("config"), "questions_hash": questions_hash(cases), "checks_version": CHECKS_VERSION,
+        "judge_prompt": JUDGE_PROMPT if judge_with else None,
+        "judge_model": providers.PROVIDERS[judge_with]["model"] if judge_with else None,
         "passed": sum(r["passed"] for r in rows), "total": sum(r["runs"] for r in rows), "cases": rows,
         "unjudged": sum(r["unjudged"] for r in rows),
         "estimated": provider == "mock", "only": only or "",
@@ -268,7 +318,8 @@ def history():
         except ValueError:
             continue
         out.append({k: d.get(k) for k in ("id", "time", "provider", "label", "model", "repeat", "use_my_settings",
-                                            "setup", "passed", "total", "judge", "only", "incomplete", "unjudged")}
+                                            "setup", "passed", "total", "judge", "only", "incomplete", "unjudged",
+                                            "questions_hash")}
                    | {"questions": len(d.get("cases", []))})
     return sorted(out, key=lambda r: r["time"] or 0)
 
@@ -397,7 +448,7 @@ def main():
     parser.add_argument("--provider", action="append", choices=providers.PROVIDERS, required=True,
                         help="repeat to compare providers")
     parser.add_argument("--use-my-settings", action="store_true",
-                        help="use your Tools-tab edits (prompt, descriptions, permissions) instead of the defaults")
+                        help="use every one of your settings, and your hooks, instead of the defaults (as Compare does)")
     parser.add_argument("--only", metavar="TEXT", help="run just the questions containing TEXT")
     parser.add_argument("--judge", default="mock", choices=[*providers.PROVIDERS, "none"],
                         help="which provider grades the open-ended answers (default: mock; 'none' skips them)")

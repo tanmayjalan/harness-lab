@@ -50,7 +50,7 @@ describe('Composer', () => {
     useSession.setState({ derived: { ...d, tokensReported: true, tokensEstimated: true, costKnown: true, cost: 0.0072,
       tokens: { read: 1700, wrote: 12, cached: 0, written: 0 } } })
     composer()
-    expect(document.body.textContent).toMatch(/≈ 1\.7k tokens in · 12 out · \$0\.0072/)
+    expect(document.body.textContent).toMatch(/≈ 1\.7k tokens in · 12 or more out · \$0\.0072 or more/) // F380: thinking isn't counted
     expect(document.body.textContent).not.toMatch(/\(estimated\)/)
   })
 
