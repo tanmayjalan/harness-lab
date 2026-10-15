@@ -11,7 +11,7 @@ import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { useCurrentProvider } from './EmptyState'
 import type { Run, RunModel } from '../../model/derive'
-import { usePrefs, useUi, type InspectorTab } from '../../store/ui'
+import { takeRestoredExperiment, usePrefs, useUi, type InspectorTab } from '../../store/ui'
 import { cn } from '../../lib/cn'
 import { askThenPick } from './EmptyState'
 
@@ -46,6 +46,11 @@ export function ExperimentHeader({ model }: { model: RunModel }) {
   useEffect(() => {
     if (x && done) usePrefs.getState().markExperimentDone(x.id)
   }, [x, done])
+  // F411: once its message is in this conversation, the experiment belongs to it (so reopening it after a reload keeps it)
+  const conversation = useSession((s) => s.conversation)
+  useEffect(() => {
+    if (x && run && conversation && useUi.getState().experimentConversation !== conversation) useUi.setState({ experimentConversation: conversation })
+  }, [x, run, conversation])
   if (!x) return null
   return (
     <Callout tone="info" data-testid="experiment-header" className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5">
@@ -66,6 +71,12 @@ export function ExperimentNow({ model }: { model: RunModel }) {
   const guess = useUi((s) => s.guess)
   const first = useRef<HTMLDivElement>(null)
   const asking = !!x?.predict && !run
+  // F411: after a reload, an experiment not sent yet puts its message back in the (empty) box
+  const loaded = useSession((s) => s.loaded)
+  useEffect(() => {
+    if (!x || run || !loaded || !takeRestoredExperiment()) return
+    if (!useUi.getState().composerText.trim()) useUi.getState().fillDraft(x.message)
+  }, [x, run, loaded])
   // Take focus once, after the message box has taken it for the draft, so the guess comes first
   useEffect(() => {
     if (!asking || useUi.getState().guess) return
