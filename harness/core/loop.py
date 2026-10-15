@@ -190,8 +190,15 @@ def _before(block, permission, confirm, hooks, on_event, offered=None):
     if rule == "ask" and confirm is None:  # nobody here to ask: not run, and the model is told why
         return _result(block, "Not run: this tool needs the user's OK, and nobody can be asked here. "
                               "Don't try it again.", is_error=True), "unattended"
+    # A script file is shown before you answer; if it changes while you decide, what you allowed isn't what would
+    # run (your hook checked the old text too), so it doesn't run
+    shown = (run_code.script_text(block.input["path"]) if rule == "ask" and block.name == "run_python"
+             and isinstance(block.input, dict) and "path" in block.input else None)
     if rule == "ask" and confirm(ask_text(block.name, block.input, outside)).strip().lower() != "y":
         return _result(block, f"The user declined this {block.name} call. Do not retry it unless they ask."), "declined"
+    if shown is not None and run_code.script_text(block.input["path"]) != shown:
+        return _result(block, "Not run: the script file changed after it was shown to the user, so what they allowed "
+                              "isn't what would run. Ask again if it's still needed.", is_error=True), "error"
     return None
 
 

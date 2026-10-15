@@ -25,7 +25,7 @@ from harness.web import compare
 from harness.web import conversations
 from harness import evals
 from harness.web.jsonify import to_json
-from harness.core import loop, run_code, tools
+from harness.core import local_only, loop, run_code, tools
 from harness.features import hooks
 from harness.features import lab_settings
 from harness.features import skills
@@ -473,6 +473,10 @@ class Session:
         """Stands in for input(): waits until the page answers yes or no."""
         pending = {"id": uuid.uuid4().hex[:12], "event": threading.Event(), "allowed": False,
                    "tool": self.last_call.get("name", "")}
+        asked = self.last_call.get("input", {})
+        # A script file: what it says now (F388). Read before taking the lock, so the page's polling never waits on a file
+        script = (run_code.script_text(asked["path"])
+                  if pending["tool"] == "run_python" and isinstance(asked, dict) and asked.get("path") else None)
         with self.lock:
             self.pending = pending
             call_input = self.last_call.get("input", {})
@@ -482,8 +486,8 @@ class Session:
                 extra["setting"] = self._permission_now(name)  # your rule, before the workspace check
             if name in tools.PATH_TOOLS and call_input.get("path"):
                 extra["where"] = str(tools.resolve(call_input["path"]))  # where the file really is
-            if name == "run_python" and call_input.get("path"):  # a script file: show what it says (F388)
-                extra["script"] = run_code.script_text(call_input["path"])
+            if script is not None:
+                extra["script"] = script
             if name == "remember_fact":  # a label you already have: say what it replaces (F277)
                 old = memory.find(memory.load(self.profile_path), call_input.get("label", ""))
                 if old:
@@ -1015,8 +1019,7 @@ class Handler(BaseHTTPRequestHandler):
     def host_ok(self):
         # Refuse requests addressed to any other host name (stops a web page using a
         # look-alike address to read this server)
-        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
-        if host in ("localhost", "127.0.0.1"):
+        if local_only.addressed_here(self.headers):
             return True
         self.send_json(403, {"error": "use http://127.0.0.1"})
         return False
