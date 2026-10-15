@@ -11,6 +11,7 @@ import { RunView } from './components/run/RunView'
 import { Timeline } from './components/run/Timeline'
 import { ExperimentNow } from './components/run/ExperimentPanels'
 import { Announcer } from './components/shell/Announcer'
+import { HelpSheet } from './components/shell/HelpSheet'
 import { Explain } from './learn/Explain'
 import { App } from './App'
 import { CONCEPTS } from './learn/concepts'
@@ -87,6 +88,22 @@ describe('F427: explanations waiting their turn', () => {
     await waitFor(() => expect(document.activeElement).toBe(second))
     fireEvent.click(within(second).getByRole('button', { name: 'Got it, shorten this next time' }))
     await waitFor(() => expect(document.activeElement).toHaveAccessibleName(`What does "${CONCEPTS.tool_use.term}" mean?`))
+  })
+})
+
+describe('F433: the glossary from an ⓘ', () => {
+  it('closing Help puts focus back on the ⓘ it was opened from', async () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }) // (the popover measures itself)
+    usePrefs.setState({ explained: ['loop'] })
+    render(<><Explain concept="loop" quiet /><HelpSheet /></>)
+    const icon = screen.getByRole('button', { name: `What does "${CONCEPTS.loop.term}" mean?` })
+    fireEvent.click(icon)
+    fireEvent.click(await screen.findByRole('button', { name: 'See it in the glossary' }))
+    expect(useUi.getState().helpOpen).toBe(true)
+    await waitFor(() => expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true))
+    act(() => useUi.getState().setHelp(false))
+    await waitFor(() => expect(document.activeElement).toBe(icon))
+    vi.unstubAllGlobals()
   })
 })
 
@@ -233,5 +250,16 @@ describe('F432: the top bar on a phone', () => {
     expect(header.className).toMatch(/\bgap-1\b.*sm:gap-2/)
     expect(within(header).getByText('Harness lab').closest('div')!.className).toMatch(/\bhidden\b.*sm:flex/)
     expect(within(header).getByRole('button', { name: 'Chat' }).className).toMatch(/max-sm:px-2/)
+  })
+})
+
+describe('F429: the area under the chat at 200% zoom', () => {
+  // (the heights themselves were measured in a browser at 640 x 400: jsdom has no layout)
+  it('takes at most a little over half the height and scrolls itself beyond that', () => {
+    useSession.setState({ conversation: 'c1', derived: deriveRuns(events(toolTurn)), loaded: true, running: false, origin: null, frozen: false })
+    render(<RunView composerRef={{ current: null }} />)
+    const box = screen.getByRole('textbox', { name: 'Message' }).closest('.overflow-y-auto')!
+    expect(box.className).toMatch(/min-h-0/)
+    expect(box.parentElement!.className).toMatch(/max-h-\[55%\]/)
   })
 })

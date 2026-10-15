@@ -199,7 +199,9 @@ export function RunView({ composerRef, onRerun, onRewind }:
           )}
         </div>
       </div>
-      <div className="relative shrink-0 px-4 pt-2 pb-3">
+      {/* F429: at 200% zoom the guess, the hints and the box could leave the chat a sliver: this area takes at most
+          a little over half the height and scrolls itself beyond that ("Jump to latest" sits above it, unclipped) */}
+      <div className="relative flex max-h-[55%] shrink-0 flex-col px-4 pt-2 pb-3">
         {!atBottom && !empty && (
           <Button size="sm" className="absolute -top-10 left-1/2 -translate-x-1/2 rounded-full shadow-md"
             onClick={() => {
@@ -212,7 +214,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
             <ArrowDown className="size-3.5" /> Jump to latest
           </Button>
         )}
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto min-h-0 w-full max-w-3xl overflow-y-auto px-1 py-0.5">
           {!pending && <><ExperimentChanges /><ExperimentNow model={model} /></>}
           {pending && <ApprovalDock key={pending.id} approval={pending} row={pendingRow} />}
           {/* kept mounted under the approval so a half-typed message survives */}

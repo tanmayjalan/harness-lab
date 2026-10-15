@@ -4,7 +4,7 @@
 // it shrinks the next time it appears (another conversation, a reload), or when you click ✕.
 import * as Popover from '@radix-ui/react-popover'
 import { Info, X } from 'lucide-react'
-import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { cn } from '../lib/cn'
 import { usePrefs, useUi } from '../store/ui'
@@ -60,6 +60,13 @@ export function Explain({ concept, className, inline = false, quiet = false }:
   return <ExplainIcon ref={icon} concept={concept} className={className} label={inline ? undefined : c.term} />
 }
 
+// About how long reading an explanation takes (200 words a minute), and never less than 3 seconds
+export function readingTime(concept: ConceptKey) {
+  const c = CONCEPTS[concept]
+  const words = [c.plain, ...c.long].join(' ').split(/\s+/).filter(Boolean).length
+  return Math.max(3000, words * 300)
+}
+
 function ExplainFull({ concept, className, onDismiss }: { concept: ConceptKey; className?: string; onDismiss: () => void }) {
   const c = CONCEPTS[concept]
   const ref = useRef<HTMLDivElement>(null)
@@ -74,14 +81,14 @@ function ExplainFull({ concept, className, onDismiss }: { concept: ConceptKey; c
     ref.current?.focus()
   }, [])
 
-  // Counts as explained once it has been on screen for a few seconds, and not while a reply is
-  // running (the view scrolls by itself then, so being on screen doesn't mean it was read)
+  // Counts as explained once it has been on screen long enough to read it (F427: not a flat 3 seconds), and
+  // not while a reply is running (the view scrolls by itself then, so being on screen doesn't mean it was read)
   useEffect(() => {
     const node = ref.current
     if (!node || learning || running || typeof IntersectionObserver === 'undefined') return
     let timer: ReturnType<typeof setTimeout> | undefined
     const io = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) timer = setTimeout(() => mark(concept), 3000)
+      if (entry.isIntersecting) timer = setTimeout(() => mark(concept), readingTime(concept))
       else clearTimeout(timer)
     })
     io.observe(node)
@@ -113,10 +120,21 @@ function ExplainFull({ concept, className, onDismiss }: { concept: ConceptKey; c
 export const ExplainIcon = forwardRef<HTMLButtonElement, { concept: ConceptKey; className?: string; label?: string; waiting?: boolean }>(
   function ExplainIcon({ concept, className, label, waiting = false }, ref) {
   const c = CONCEPTS[concept]
+  const [open, setOpen] = useState(false)
+  const trigger = useRef<HTMLButtonElement>(null)
+  useImperativeHandle(ref, () => trigger.current!, [])
+  // F433: "See it in the glossary" goes away with this popover: Help gives focus back to the ⓘ when it closes
+  const toGlossary = useRef(false)
+  const glossary = () => {
+    toGlossary.current = true
+    trigger.current?.focus() // where Help returns focus (it remembers what had focus as it opens)
+    useUi.getState().setHelp(true, `term-${concept}`)
+    setOpen(false)
+  }
   return (
-    <Popover.Root>
+    <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button ref={ref} type="button" aria-label={waiting ? `New, not read yet: what does "${c.term}" mean?` : `What does "${c.term}" mean?`}
+        <button ref={trigger} type="button" aria-label={waiting ? `New, not read yet: what does "${c.term}" mean?` : `What does "${c.term}" mean?`}
           className={cn('-m-[5px] inline-flex items-center gap-1 rounded p-[5px] text-xs text-muted hover:text-accent', className)}>
           <Info className="size-3.5" aria-hidden />
           {label && <span>{label}</span>}
@@ -124,10 +142,12 @@ export const ExplainIcon = forwardRef<HTMLButtonElement, { concept: ConceptKey; 
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content sideOffset={6} collisionPadding={12}
+          // (closing for the glossary: Help has focus now, so don't pull it back to the ⓘ)
+          onCloseAutoFocus={(e) => { if (toGlossary.current) { toGlossary.current = false; e.preventDefault() } }}
           className="pop-in z-50 w-80 space-y-1.5 rounded-lg border border-line bg-panel p-3 text-sm shadow-xl">
           <div className="font-medium">{c.plain} <span className="font-normal text-muted">({c.term})</span></div>
           {c.long.map((p, i) => <p key={i}>{p}</p>)}
-          <button type="button" className="text-xs text-accent hover:underline" onClick={() => useUi.getState().setHelp(true, `term-${concept}`)}>
+          <button type="button" className="text-xs text-accent hover:underline" onClick={glossary}>
             See it in the glossary
           </button>
           <Popover.Arrow className="fill-panel" />
