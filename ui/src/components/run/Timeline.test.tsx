@@ -7,6 +7,7 @@ import { usePrefs, useUi } from '../../store/ui'
 import { Timeline } from './Timeline'
 import { CONCEPTS } from '../../learn/concepts'
 import { RunView } from './RunView'
+import { Announcer } from '../shell/Announcer'
 import { ToolRow } from './ToolRow'
 import { HelperCard } from './HelperCard'
 import { useSession } from '../../store/session'
@@ -245,7 +246,8 @@ describe('timeline accessibility (F321 F322 F323 F324 F325 F326b)', () => {
     useUi.setState({ approvalDock: null })
     const events = answer as unknown[]
     useSession.setState({ conversation: 'c1', derived: deriveRuns(events.slice(0, 2) as HarnessEvent[]), loaded: true, running: true, origin: null, frozen: false })
-    render(<RTooltip.Provider><RunView composerRef={{ current: null }} /></RTooltip.Provider>)
+    useUi.setState({ spoken: { text: '', n: 0 } })
+    render(<RTooltip.Provider><RunView composerRef={{ current: null }} /><Announcer /></RTooltip.Provider>)
     act(() => useSession.setState({ derived: deriveRuns(events as HarnessEvent[]), running: false }))
     expect(screen.getByText(/^Reply received \(1 call\)/)).toBeInTheDocument()
   })

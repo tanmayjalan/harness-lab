@@ -5,7 +5,7 @@ import type { Run } from '../../model/derive'
 import { useInspectedCallId } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
-import { useUi } from '../../store/ui'
+import { say, useUi } from '../../store/ui'
 import { useCompare } from '../../store/compare'
 import { useEvals } from '../../store/evals'
 import { Composer, type ComposerHandle } from '../composer/Composer'
@@ -83,7 +83,6 @@ export function RunView({ composerRef, onRerun, onRewind }:
   const pendingRow = pending?.toolId ? model.tools[pending.toolId] : undefined
   // When the approval panel goes, put focus back in the message box and say what happened
   const lastPending = useRef<string | null>(null)
-  const [announce, setAnnounce] = useState('')
   useEffect(() => {
     if (pending) {
       lastPending.current = pending.id
@@ -94,8 +93,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
     lastPending.current = null
     const decision = Object.values(model.tools).find((r) => r.approval?.id === was)?.approval?.decision
     if (decision === undefined) return // gone without an answer (lost contact, another conversation): say nothing
-    // (a counter in the text, so two answers in a row are both read out)
-    setAnnounce((a) => `${decision ? 'Allowed. The harness runs the tool.' : 'Declined. The harness carries on.'}${a.endsWith('\u200b') ? '' : '\u200b'}`)
+    say(decision ? 'Allowed. The harness runs the tool.' : 'Declined. The harness carries on.')
     document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus()
   }, [pending, model])
   // F324: a reply that arrives while you watch is read out, with how many calls it took. Only for a message
@@ -104,9 +102,10 @@ export function RunView({ composerRef, onRerun, onRewind }:
   const last = model.runs[model.runs.length - 1]
   if (running) watched.current.add(`${conversation}:${last && last.outcome === 'running' ? last.index : model.runs.length + 1}`)
   // F428: and so is a message that stops (Stop, or the call limit), with an experiment's reveal in the same
-  // sentence (two in a row would cut each other off). A failure isn't: its own alert reads it out
+  // sentence (two in a row would cut each other off). A failure only while the chat is hidden under the narrow
+  // Inspect view; otherwise its own alert reads it out. All of it through the page's Announcer (say()), which
+  // is outside the chat, so it is heard while the chat is hidden too
   const said = useRef(new Set<string>())
-  const say = (text: string) => setAnnounce((a) => `${text}${a.endsWith('\u200b') ? '' : '\u200b'}`)
   useEffect(() => {
     if (!last || last.outcome === 'running') return
     const key = `${conversation}:${last.index}`
@@ -116,7 +115,8 @@ export function RunView({ composerRef, onRerun, onRewind }:
     const limit = (last.errorDetail ?? last.error ?? '').match(/hit max_turns \((\d+)\)/)
     const what = last.answer ? `Reply received (${n} ${n === 1 ? 'call' : 'calls'}).`
       : last.outcome === 'stopped' ? 'Stopped. The conversation so far is kept.'
-        : limit ? `Stopped: this message reached the limit of ${limit[1]} model calls. The conversation so far is kept.` : ''
+        : limit ? `Stopped: this message reached the limit of ${limit[1]} model calls. The conversation so far is kept.`
+          : scroller.current?.closest('[inert]') ? `The model call failed. ${last.error ?? ''}` : ''
     const text = `${what} ${revealWords(model)}`.trim()
     if (text) say(text)
   }, [last, conversation])
@@ -128,8 +128,9 @@ export function RunView({ composerRef, onRerun, onRewind }:
     if (!watched.current.has(`${conversation}:${last.index}`)) return
     for (const id of last.callIds) {
       const c = model.calls[id]
-      if (!c || callsBack.current.has(id) || (!c.stopReason && !c.failed)) continue
-      callsBack.current.add(id)
+      const seen = `${conversation}:${id}` // (call ids start again in each conversation)
+      if (!c || callsBack.current.has(seen) || (!c.stopReason && !c.failed)) continue
+      callsBack.current.add(seen)
       const asked = (c.response?.content ?? []).filter((b) => b.type === 'tool_use').length
       if (c.stopReason === 'tool_use') say(`Call ${c.turn}: ${stopWords(c.stopReason, Math.max(asked, c.toolIds.length))}.`)
     }
@@ -212,7 +213,6 @@ export function RunView({ composerRef, onRerun, onRewind }:
           </Button>
         )}
         <div className="mx-auto max-w-3xl">
-          <div className="sr-only" aria-live="polite">{announce}</div>
           {!pending && <><ExperimentChanges /><ExperimentNow model={model} /></>}
           {pending && <ApprovalDock key={pending.id} approval={pending} row={pendingRow} />}
           {/* kept mounted under the approval so a half-typed message survives */}
