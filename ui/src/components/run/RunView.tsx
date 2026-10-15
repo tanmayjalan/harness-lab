@@ -32,6 +32,10 @@ export function RunView({ composerRef, onRerun, onRewind }:
   const scroller = useRef<HTMLDivElement>(null)
   const [atBottom, setAtBottom] = useState(true)
   const stick = useRef(true)
+  // F405: an empty conversation (or one still loading) never sticks to the bottom: its page grows as it
+  // loads, and following that growth would hide the heading
+  const hasRuns = useRef(false)
+  hasRuns.current = loaded && model.runs.length > 0
 
   // Is there anything below what you can see? Checked after every change, not only when you
   // scroll: content can shrink (the empty screen giving way to a short reply) without a scroll
@@ -39,14 +43,14 @@ export function RunView({ composerRef, onRerun, onRewind }:
     const el = scroller.current
     if (!el) return
     const b = nearBottom(el)
-    if (b) stick.current = true
+    if (b && hasRuns.current) stick.current = true
     setAtBottom(b)
   }
 
   // Follow new content while you're at the bottom; leave you alone if you scrolled up to read
   useLayoutEffect(() => {
     const el = scroller.current
-    if (el && stick.current) el.scrollTop = el.scrollHeight
+    if (el && stick.current && hasRuns.current) el.scrollTop = el.scrollHeight
     measure()
   }, [model, live])
 
@@ -58,7 +62,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
     const el = scroller.current
     if (el) el.scrollTop = runs > 0 ? el.scrollHeight : 0
     measure()
-  }, [conversation, runs])
+  }, [conversation, runs, loaded])
 
   // Content can also change size by itself (an explanation closing, a tool row opening)
   useEffect(() => {
@@ -70,7 +74,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
         useUi.getState().setKeepScroll(false)
         stick.current = false
       }
-      if (stick.current) el.scrollTop = el.scrollHeight
+      if (stick.current && hasRuns.current) el.scrollTop = el.scrollHeight
       measure()
     })
     ro.observe(el)
@@ -118,7 +122,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
       <div ref={scroller} className="relative min-h-0 flex-1 overflow-y-auto"
         onScroll={(e) => {
           const b = nearBottom(e.currentTarget)
-          stick.current = b
+          stick.current = b && hasRuns.current
           setAtBottom(b)
         }}>
         <div className="mx-auto max-w-3xl px-4 py-6">
