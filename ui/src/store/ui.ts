@@ -43,7 +43,6 @@ type UiState = {
   settingsDrafts: Record<string, string> // unsaved text in Settings ('system', 'desc:<tool>'), kept while you move around
   spoken: { text: string; n: number } // F425: a sentence for screen readers, read out by the Announcer (n changes each time)
   focusInspector: boolean // F426: the Inspector takes focus when it next shows a call (you picked one in the chat)
-  chatPlace: { conversation: string | null; runs: number; top: number } | null // F429: where the chat was when the narrow Inspect pane replaced it
   setScreen: (s: Screen) => void
   selectCall: (id: string | null, toolId?: string | null) => void
   follow: () => void
@@ -69,7 +68,6 @@ type UiState = {
   setComposerText: (text: string) => void
   setKeepScroll: (on: boolean) => void
   setFocusInspector: (on: boolean) => void
-  setChatPlace: (place: UiState['chatPlace']) => void
 }
 
 let nextToast = 1
@@ -102,7 +100,6 @@ export const useUi = create<UiState>((set, get) => ({
   keepScroll: false,
   spoken: { text: '', n: 0 },
   focusInspector: false,
-  chatPlace: null,
   setScreen: (screen) => set({ screen }),
   selectCall: (selectedCallId, selectedToolId = null) => {
     usePrefs.getState().sawInspectHint() // you found the Inspector: the "inspect →" hint has done its job
@@ -144,7 +141,6 @@ export const useUi = create<UiState>((set, get) => ({
   setComposerText: (composerText) => set({ composerText }),
   setKeepScroll: (keepScroll) => set({ keepScroll }),
   setFocusInspector: (focusInspector) => set({ focusInspector }),
-  setChatPlace: (chatPlace) => set({ chatPlace }),
   setSettingsDraft: (key, text) => set((s) => {
     const next = { ...s.settingsDrafts }
     if (text === null) delete next[key]

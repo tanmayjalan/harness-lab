@@ -187,15 +187,19 @@ export function App() {
                 <div className="flex shrink-0 justify-center border-b border-line bg-panel p-1">
                   <div className={SEGMENT_TRACK} role="group" aria-label="Show">
                     {(['chat', 'inspect'] as const).map((p) => (
-                      <button key={p} type="button" aria-pressed={mobilePane === p} onClick={() => useUi.getState().setMobilePane(p)}
+                      <button key={p} type="button" aria-pressed={mobilePane === p} onClick={() => showPane(p)}
                         className={cn(segmentItem(mobilePane === p), 'px-4')}>
                         {p === 'chat' ? 'Chat' : 'Inspect'}
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="min-h-0 flex-1">
-                  {mobilePane === 'chat' ? <RunView composerRef={composer} onRerun={rerun} onRewind={setRewinding} /> : <Inspector />}
+                {/* F429: the chat stays (hidden, out of reach) under the Inspect view, so coming back finds the same place */}
+                <div className="relative min-h-0 flex-1">
+                  <div className={cn('absolute inset-0', mobilePane !== 'chat' && 'invisible')} inert={mobilePane !== 'chat'}>
+                    <RunView composerRef={composer} onRerun={rerun} onRewind={setRewinding} />
+                  </div>
+                  {mobilePane === 'inspect' && <div className="absolute inset-0"><Inspector /></div>}
                 </div>
               </div>
             ) : <RunView composerRef={composer} onRerun={rerun} onRewind={setRewinding} />}
@@ -299,6 +303,14 @@ function step(d: number) {
   const i = Math.max(0, Math.min(order.length - 1, at + d))
   const stuck = i === at && (d < 0 || !ui.followLatest)
   inspectCall(order[i], { before: stuck ? (d < 0 ? 'Already at the first call. ' : 'Already at the newest call. ') : '' })
+}
+
+// Chat or Inspect on a narrow screen. Back to the chat from Inspect, focus goes to the call you picked (F429)
+function showPane(p: 'chat' | 'inspect') {
+  const ui = useUi.getState()
+  const back = p === 'chat' && ui.mobilePane === 'inspect'
+  ui.setMobilePane(p)
+  if (back && !ui.followLatest) setTimeout(() => callDivider(useUi.getState().selectedCallId)?.focus())
 }
 
 // F426: hiding the Inspector puts focus back on the call it showed, in the chat (its button is gone)

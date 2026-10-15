@@ -2,7 +2,7 @@
 import { ArrowDown } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Run } from '../../model/derive'
-import { callDivider, useInspectedCallId } from '../../store/selectors'
+import { useInspectedCallId } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { useUi } from '../../store/ui'
@@ -57,29 +57,9 @@ export function RunView({ composerRef, onRerun, onRewind }:
   useLayoutEffect(() => {
     stick.current = runs > 0
     const el = scroller.current
-    // F429: back from the narrow Inspect view: the same place, and focus on the call you picked
-    const place = useUi.getState().chatPlace
-    if (place) useUi.getState().setChatPlace(null)
-    if (el && place && place.conversation === conversation && place.runs === runs) {
-      el.scrollTop = place.top
-      stick.current = nearBottom(el)
-      measure()
-      const ui = useUi.getState()
-      if (!ui.followLatest) callDivider(ui.selectedCallId)?.focus({ preventScroll: true })
-      return
-    }
     if (el) el.scrollTop = runs > 0 ? el.scrollHeight : 0
     measure()
   }, [conversation, runs])
-  // F429: the narrow Inspect view replaces the chat: keep its place for coming back
-  const top = useRef(0)
-  useLayoutEffect(() => () => {
-    const ui = useUi.getState()
-    if (ui.mobilePane === 'inspect') {
-      const s = useSession.getState()
-      ui.setChatPlace({ conversation: s.conversation, runs: s.derived.runs.length, top: top.current })
-    }
-  }, [])
 
   // Content can also change size by itself (an explanation closing, a tool row opening)
   useEffect(() => {
@@ -166,7 +146,6 @@ export function RunView({ composerRef, onRerun, onRewind }:
     <div className="flex h-full min-h-0 flex-col">
       <div ref={scroller} className="relative min-h-0 flex-1 overflow-y-auto"
         onScroll={(e) => {
-          top.current = e.currentTarget.scrollTop
           const b = nearBottom(e.currentTarget)
           stick.current = b
           setAtBottom(b)
