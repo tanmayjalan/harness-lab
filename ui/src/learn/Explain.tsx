@@ -1,5 +1,6 @@
 // Explains a concept in full the first time it's on screen; after that, an (i) to open it again.
 // Only one is in full at a time: the others new on the page wait as an (i) with their name until it is closed.
+// The one in full is the earliest, unless the experiment you are following is about one on the page (F413).
 // Being seen is recorded after a moment on screen, but the full text stays put while you read:
 // it shrinks the next time it appears (another conversation, a reload), or when you click ✕.
 import * as Popover from '@radix-ui/react-popover'
@@ -10,11 +11,12 @@ import { cn } from '../lib/cn'
 import { usePrefs, useUi } from '../store/ui'
 import { useSession } from '../store/session'
 import { CONCEPTS, type ConceptKey } from './concepts'
+import { findExperiment } from './experiments'
 import { Callout, IconButton } from '../components/ui'
 
 // The explanations on the page that are new to you, each with an id in the order they appeared. Only the
 // earliest is shown in full; the others wait as an ⓘ with their name, and the next one opens when it is closed.
-const useWaiting = create<{ ids: number[] }>(() => ({ ids: [] }))
+const useWaiting = create<{ ids: { id: number; concept: ConceptKey }[] }>(() => ({ ids: [] }))
 let nextId = 1
 
 // `quiet`: once explained, leave only a small ⓘ here (for places that repeat, like the timeline)
@@ -28,17 +30,18 @@ export function Explain({ concept, className, inline = false, quiet = false }:
   // Before paint, so a waiting one never flashes in full
   useLayoutEffect(() => {
     if (learning || !isNew) return
-    useWaiting.setState((s) => ({ ids: [...s.ids, id].sort((a, b) => a - b) }))
-    return () => useWaiting.setState((s) => ({ ids: s.ids.filter((x) => x !== id) }))
-  }, [id, isNew, learning])
-  const turn = useWaiting((s) => s.ids[0] === id)
+    useWaiting.setState((s) => ({ ids: [...s.ids, { id, concept }].sort((a, b) => a.id - b.id) }))
+    return () => useWaiting.setState((s) => ({ ids: s.ids.filter((x) => x.id !== id) }))
+  }, [id, concept, isNew, learning])
+  const focus = findExperiment(useUi((s) => s.experimentId))?.concept
+  const turn = useWaiting((s) => (s.ids.find((x) => x.concept === focus) ?? s.ids[0])?.id === id)
   const c = CONCEPTS[concept]
   if (learning || (isNew && turn)) {
     return <ExplainFull concept={concept} className={className} onDismiss={() => setDismissed(true)} />
   }
-  // waiting its turn: named, so you can see there is something new to read
+  // waiting its turn: named, so you can see there is something new to read, in plain words (F414)
   // (a gap after it: two waiting side by side would read as one name)
-  if (isNew) return <ExplainIcon concept={concept} className={cn('mr-4', className)} label={c.term} />
+  if (isNew) return <ExplainIcon concept={concept} className={cn('mr-4', className)} label={c.plain} />
   if (quiet) return <ExplainIcon concept={concept} className={className} />
   return <ExplainIcon concept={concept} className={className} label={inline ? undefined : c.term} />
 }
@@ -49,6 +52,7 @@ function ExplainFull({ concept, className, onDismiss }: { concept: ConceptKey; c
   const mark = usePrefs((s) => s.markExplained)
   const learning = usePrefs((s) => s.learningMode)
   const running = useSession((s) => s.running)
+  const more = useWaiting((s) => s.ids.length > 1) // others are waiting for this one to close
 
   // Counts as explained once it has been on screen for a few seconds, and not while a reply is
   // running (the view scrolls by itself then, so being on screen doesn't mean it was read)
@@ -75,7 +79,7 @@ function ExplainFull({ concept, className, onDismiss }: { concept: ConceptKey; c
       {c.long.map((p, i) => <p key={i} className="text-fg/90">{p}</p>)}
       {!learning && (
         <IconButton size="sm" onClick={() => { mark(concept); onDismiss() }} label="Got it, shorten this next time"
-          tip="Got it. Next time this is an ⓘ (Help → Show all explanations again brings it back)"
+          tip={`Got it. Next time this is an ⓘ (Help → Show all explanations again brings it back)${more ? '. Then the next new one on the page opens in full' : ''}`}
           className="absolute top-0.5 right-0.5 text-muted hover:bg-panel hover:text-fg">
           <X className="size-3.5" />
         </IconButton>

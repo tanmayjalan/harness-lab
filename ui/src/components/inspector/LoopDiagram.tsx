@@ -48,7 +48,7 @@ export function LoopDiagram({ active, path = [], className, compact = false, ear
   const name = (id: LoopNode) => NODES.find((n) => n.id === id)!.title.replace(/^\d\. /, '')
   const label = path.length && active
     ? `Harness loop: this call went ${path.map(name).join(' → ')}; now at ${name(active)}${early ? ' (stopped early)' : ''}${hooks ? `; your hooks: ${hooks}` : ''}`
-    : `Diagram of the harness loop: ${NODES.map((n) => n.title).join(', ')}; tool_use loops back to Call the model; end_turn ends`
+    : `Diagram of the harness loop: ${NODES.map((n) => n.title).join(', ')}; asking for tools loops back to Call the model; a finished reply ends it`
   const reply = NODES.find((n) => n.id === 'reply')!
   const tools = NODES.find((n) => n.id === 'tools')!
   return (
@@ -91,19 +91,22 @@ export function LoopDiagram({ active, path = [], className, compact = false, ear
           <>
             <div className={cn('absolute -translate-x-1/2 text-2xs leading-tight whitespace-nowrap text-muted', ROOMY)}
               style={{ left: x(399), top: y(3) }}>
-              asked for tools (tool_use): run them, send the results, call again
+              asked for tools: run them, send the results, call again
             </div>
             {/* to the right of the down arrow, so it clears "stopped early" on the left */}
             <div className={cn('absolute text-2xs leading-tight whitespace-nowrap text-muted', ROOMY)}
               style={{ left: x(405), top: y(100) }}>
-              finished (end_turn)
+              finished
             </div>
-            {/* where your hooks sit: around each tool, here on this computer; ends at the box's right edge */}
-            <div className={cn('absolute text-right text-2xs leading-tight whitespace-nowrap', hooks ? 'font-semibold text-warn' : 'text-muted', ROOMY)}
-              style={{ right: x(W - tools.x - BOX_W), top: y(tools.y + BOX_H + 2) }}>
-              <div>your hooks{hooks ? ':' : ''}</div>
-              <div>{hooks || 'run around each'}</div>
-            </div>
+            {/* what your hooks did around the tools in this call; ends at the box's right edge. F414: only when
+                they did something (on the welcome page hooks are not taught yet) */}
+            {hooks && (
+              <div className={cn('absolute text-right text-2xs leading-tight font-semibold whitespace-nowrap text-warn', ROOMY)}
+                style={{ right: x(W - tools.x - BOX_W), top: y(tools.y + BOX_H + 2) }}>
+                <div>your hooks:</div>
+                <div>{hooks}</div>
+              </div>
+            )}
           </>
         )}
         {/* to the left of the down arrow */}
@@ -116,7 +119,7 @@ export function LoopDiagram({ active, path = [], className, compact = false, ear
       </div>
       {/* outside the image, so it is read; in a roomy diagram it shows only when the notes above can't fit */}
       <p className={cn('text-center text-xs text-muted', !compact && 'hidden @max-[34rem]:block')}>
-        tool_use: run tools, call again · end_turn: show the answer
+        asked for tools: run them, call again · finished: show the answer
         {hooks && <span className="font-semibold text-warn"> · your hooks: {hooks}</span>}
       </p>
     </div>
