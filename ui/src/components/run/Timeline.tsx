@@ -212,7 +212,7 @@ function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, l
               {call.toolIds.map((id) => model.tools[id]).filter(Boolean).map((row) => (
                 <ToolRow key={row.id} row={row} selected={selectedTool === row.id}
                   setting={call.request.tools?.find((t) => t.name === row.name)?.permission} loaded={call.request.hooks}
-                  onSelect={() => onSelect(call.id, row.id)} />
+                  onSelect={() => useUi.getState().inspect(call.id, 'tools', { toolId: row.id })} />
               ))}
             </div>
           )}
