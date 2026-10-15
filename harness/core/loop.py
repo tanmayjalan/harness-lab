@@ -327,8 +327,12 @@ def agent(messages, client, max_turns=20, confirm=input, on_event=ignore_event, 
             request["output_config"] = {"effort": thinking.get("effort", "medium")}
         elif thinking:
             request["thinking"] = {"type": "enabled", "budget_tokens": thinking["budget"]}
+        # `api_body` is exactly what goes to the API apart from `messages` (already here, as sent): with them,
+        # it is the whole request body, tool definitions and cache marks included. Streaming adds "stream": true
         on_event("request", turn=turn, max_turns=max_turns, messages=to_send, system=system, max_tokens=max_tokens,
-                 thinking=request.get("thinking"), output_config=request.get("output_config"), cache=bool(cache))
+                 thinking=request.get("thinking"), output_config=request.get("output_config"), cache=bool(cache),
+                 api_body={k: v for k, v in request.items() if k != "messages"},
+                 streamed=bool(stream and hasattr(client.messages, "stream")))
         for attempt in range(RETRIES + 1):
             started_text = False
             try:

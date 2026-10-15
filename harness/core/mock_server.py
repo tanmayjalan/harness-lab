@@ -229,12 +229,15 @@ def read_reply(stream, tool_names):
         raise RuntimeError(f"claude -p reported an error: {result.get('result')}")
     # claude -p's own time minus the model's: the cost of starting it, which a real API doesn't have
     overhead = max(0, (result.get("duration_ms") or 0) - (result.get("duration_api_ms") or 0)) or None
+    # What the model really wrote, by claude -p's own count: thinking and its reply format included
+    usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
+    extra = {"thinking": thought, "overhead_ms": overhead, "claude_output_tokens": usage.get("output_tokens")}
     if attempts:
-        return {"text": "\n\n".join(said), "tool_calls": attempts, "thinking": thought, "overhead_ms": overhead}
+        return {"text": "\n\n".join(said), "tool_calls": attempts, **extra}
     answer = result.get("structured_output")
     if not isinstance(answer, dict):  # no structured reply: treat the plain text as the answer
         answer = {"text": str(result.get("result", "")), "tool_calls": []}
-    return {**answer, "thinking": thought, "overhead_ms": overhead}
+    return {**answer, **extra}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -275,6 +278,8 @@ class Handler(BaseHTTPRequestHandler):
         reply["usage"] = estimate_usage(request, reply)
         if answer.get("overhead_ms"):
             reply["usage"]["mock_overhead_ms"] = answer["overhead_ms"]
+        if isinstance(answer.get("claude_output_tokens"), int):  # (thinking included, so more than the estimate)
+            reply["usage"]["mock_claude_output_tokens"] = answer["claude_output_tokens"]
         calls = [b["name"] for b in reply["content"] if b["type"] == "tool_use"]
         n = len(request["messages"])
         what = (f"it asked for {'a tool' if len(calls) == 1 else 'tools'}: {', '.join(calls)}" if calls
@@ -364,13 +369,27 @@ def apply_limit(answer, max_tokens):
     return answer, False
 
 
+def compact(value):
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def sent_chars(request):
+    """The size of a request, counted the one way the page counts it too (ui/src/model/inspector.ts sentChars):
+    the system prompt's text, plus the tools and the messages as compact JSON (no spaces)."""
+    system = request.get("system")
+    tools = request.get("tools")
+    return ((len(system_to_text(system)) if system else 0) + (len(compact(tools)) if tools else 0)
+            + len(compact(request.get("messages") or [])))
+
+
 def estimate_usage(request, reply):
     """claude -p's own token counts don't match what the harness sent (the mock wraps the request in
     its own prompt), so estimate from the request itself: about 4 characters per token. Marked as an
-    estimate; no cache reads are claimed (the mock can't cache)."""
-    sent = len(json.dumps([request.get("system"), request.get("tools"), request.get("messages")], ensure_ascii=False))
-    out = len(json.dumps([b for b in reply["content"] if b["type"] != "thinking"], ensure_ascii=False))
-    return {"input_tokens": max(1, sent // 4), "output_tokens": max(1, out // 4), "estimated": True}
+    estimate; no cache reads are claimed (the mock can't cache). The reply's thinking isn't counted (claude -p
+    doesn't show its text), so tokens out are a lower bound; `mock_claude_output_tokens`, when claude -p reports
+    it, is the model's own count with thinking (and the mock's reply format) included."""
+    out = len(compact([b for b in reply["content"] if b["type"] != "thinking"]))
+    return {"input_tokens": max(1, sent_chars(request) // 4), "output_tokens": max(1, out // 4), "estimated": True}
 
 
 def error(kind, message):
