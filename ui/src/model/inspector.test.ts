@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { HarnessEvent } from '../api/types'
 import { deriveRuns } from './derive'
-import { answersCarried, breakdown, callTiming, callView, receivedLine, roundTrips, sentChars, tokenSeries } from './inspector'
+import { answersCarried, breakdown, callTiming, callView, receivedLine, roundTrips, sentBody, sentChars, tokenSeries } from './inspector'
+import type { Call } from './derive'
+import requestSize from '../test/fixtures/request_size.json'
 import toolTurn from '../test/fixtures/tool_turn.json'
 import trimmed from '../test/fixtures/trimmed.json'
 import compacted from '../test/fixtures/compacted.json'
@@ -88,6 +90,34 @@ describe('breakdown', () => {
     expect(parts.earlier).toBeGreaterThan(0) // your first message
     expect(parts.results).toBeGreaterThan(0) // call 2 carries the first call's tool results
     expect(sentChars(second.call)).toBeGreaterThan(parts.system + parts.tools)
+  })
+})
+
+// F378: one request, one size. The mock counts the same request the same way (tests/test_mock_server.py)
+describe('sentChars', () => {
+  const call = { request: { system: requestSize.system, messages: requestSize.messages, api_body: requestSize.api_body } } as unknown as Call
+  it('counts the system prompt, the full tool definitions and the messages, as the mock does', () => {
+    expect(sentChars(call)).toBe(requestSize.chars)
+  })
+  it('the made-of bar adds up to the same size, give or take the list brackets', () => {
+    const view = { call, previous: null, afterSummary: false,
+      messages: requestSize.messages.map((message, index) => ({ message, index, isNew: true, sentTimes: 1, trimmed: false, summary: false })) }
+    const sum = breakdown(view as never).reduce((n, p) => n + p.chars, 0)
+    expect(requestSize.chars - sum).toBe(1 + requestSize.messages.length) // "[", "]" and the commas between entries
+    expect(breakdown(view as never).find((p) => p.key === 'tools')?.label).toBe('tool definitions')
+  })
+})
+
+// F377: Raw shows the body the loop recorded, not one rebuilt from today's settings
+describe('sentBody', () => {
+  it('is the recorded body with the messages in their place', () => {
+    const call = { request: { messages: requestSize.messages, api_body: { ...requestSize.api_body, thinking: { type: 'adaptive' } } } } as unknown as Call
+    const body = sentBody(call)!
+    expect(Object.keys(body)).toEqual(['model', 'max_tokens', 'system', 'tools', 'messages', 'thinking'])
+    expect((body.tools as { strict?: boolean }[])[1].strict).toBe(true)
+  })
+  it('is null for a call saved before the body was recorded', () => {
+    expect(sentBody({ request: { messages: [] } } as unknown as Call)).toBeNull()
   })
 })
 

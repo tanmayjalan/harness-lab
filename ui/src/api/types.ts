@@ -7,6 +7,7 @@ export type Usage = {
   cache_creation_input_tokens?: number
   estimated?: boolean // the mock's guess (about 4 characters per token), not a real count
   mock_overhead_ms?: number // the mock: time spent starting claude -p, not the model's
+  mock_claude_output_tokens?: number // the mock: claude -p's own count of what the model wrote, thinking included
 }
 
 // Content blocks inside messages (SDK objects turned into plain JSON by the server)
@@ -97,7 +98,15 @@ export type RequestEvent = Base & {
   hooks?: HooksLoaded | null // missing in conversations saved before hook calls were recorded
   step?: number // a workflow's step this call belongs to (1, 2, ...); missing outside a workflow
   step_name?: WorkflowStepName
+  // Exactly what the loop sent apart from `messages` (above, as sent): tool definitions, cache marks and all
+  // (harness/core/loop.py). Missing in conversations saved before it was recorded
+  api_body?: ApiBody
+  streamed?: boolean // sent as a stream: the body also had "stream": true
 }
+export type ApiBody = {
+  model: string; max_tokens: number; system: string | { type: 'text'; text: string; cache_control?: unknown }[]
+  tools?: Record<string, unknown>[]; thinking?: unknown; output_config?: unknown
+} & Record<string, unknown>
 export type ResponseEvent = Base & {
   kind: 'response'
   turn: number
@@ -214,6 +223,8 @@ export type ProviderInfo = {
   thinking?: 'adaptive' | 'budget' // how this provider takes thinking
   model_prices?: Record<string, NonNullable<Price>> | null // the mock: prices per model it imitates
   context_windows?: Record<string, number> | null // the most each model can take in on one call (tokens)
+  // Where the prices and window sizes come from, and the day they were last checked
+  source?: { prices: string; windows: string; checked: string } | null
 }
 
 export type ToolDef = { name: string; description: string; input_schema?: unknown }

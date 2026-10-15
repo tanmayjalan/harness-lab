@@ -613,7 +613,7 @@ class Handler(BaseHTTPRequestHandler):
                     {"name": n, "label": p["label"], "model": p["model"], "missing_key": providers.missing_key(n),
                      "price": p.get("price"), "models": providers.models(n),
                      "thinking": providers.thinking_style(n), "model_prices": p.get("model_prices"),
-                     "context_windows": p.get("context_windows")}
+                     "context_windows": p.get("context_windows"), "source": p.get("source")}
                     for n, p in providers.PROVIDERS.items()
                 ],
                 "folder": str(tools.WORKSPACE),
