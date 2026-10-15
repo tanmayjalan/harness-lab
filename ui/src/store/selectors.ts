@@ -2,9 +2,11 @@
 import { api, ApiError } from '../api/client'
 import type { Rule } from '../api/types'
 import { count, plural } from '../lib/format'
+import { ONE_COLUMN } from '../lib/layout'
+import { stopWords } from '../lib/stopWords'
 import { useServer } from './server'
 import { useSession } from './session'
-import { toast, useUi } from './ui'
+import { say, toast, usePrefs, useUi } from './ui'
 
 // The call the Inspector shows: the one you picked, or the newest while following along
 export function useInspectedCallId(): string | null {
@@ -113,6 +115,35 @@ export async function openConversation(id: string, opts?: { goneToast?: boolean 
 
 // The keys that move around a conversation ([ ] / and Alt+arrows) only work on its screen
 export const onRunScreen = () => useUi.getState().screen === 'run'
+
+// A call's line in the chat (its button), to put focus back on
+export function callDivider(id: string | null | undefined) {
+  if (!id) return null
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-call-id]')).find((el) => el.dataset.callId === id) ?? null
+}
+
+// A call in words, for a screen reader: "Message 1, call 2 (2 of 3 calls): asked for 1 tool"
+export function callSentence(id: string) {
+  const model = useSession.getState().derived
+  const c = model.calls[id]
+  if (!c) return ''
+  const asked = (c.response?.content ?? []).filter((b) => b.type === 'tool_use').length
+  const what = c.failed ? 'failed' : stopWords(c.stopReason, Math.max(asked, c.toolIds.length))
+  return `Message ${c.runIndex}, call ${c.turn} (${model.callOrder.indexOf(id) + 1} of ${plural(model.callOrder.length, 'call')}): ${what}`
+}
+
+// F425, F426: show a call in the Inspector. `focus`: you picked it in the chat, so the Inspector takes focus
+// (on a narrow screen it is its own view: go there). Without it ([ and ]) focus stays where it is and the
+// call is read out instead; a narrow screen stays on the chat, with the call marked there
+export function inspectCall(id: string, { focus = false, before = '' }: { focus?: boolean; before?: string } = {}) {
+  const ui = useUi.getState()
+  ui.selectCall(id)
+  const narrow = typeof matchMedia !== 'undefined' && matchMedia(`(max-width: ${ONE_COLUMN - 1}px)`).matches
+  if (!narrow) usePrefs.getState().setInspectorOpen(true)
+  else if (focus) ui.setMobilePane('inspect')
+  if (focus) ui.setFocusInspector(true)
+  else say(`${before}${narrow ? '' : 'Inspector: '}${callSentence(id)}`)
+}
 
 export async function deleteConversation(id: string) {
   const title = useServer.getState().conversations?.items.find((c) => c.id === id)?.title ?? 'the conversation'

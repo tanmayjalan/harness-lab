@@ -76,23 +76,24 @@ export function TopBar({ narrow }: { narrow: boolean }) {
   }, [busy, comparing, st.label, evals.running, running, evalDone, evalTotal])
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-panel px-2">
+    // F432: on a phone (390 px) everything fits: no logo, tighter gaps and screen buttons
+    <header className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-panel px-1 sm:gap-2 sm:px-2">
       <IconButton label="Conversations" aria-expanded={narrow ? sidebarSheet : !sidebarCollapsed} aria-controls="sidebar"
         onClick={() => (narrow ? useUi.getState().setSidebarSheet(true) : toggleSidebar())}>
         <PanelLeft className="size-4" />
       </IconButton>
-      <div className="flex items-center gap-1.5 pr-2 font-semibold">
+      <div className="hidden items-center gap-1.5 pr-2 font-semibold sm:flex">
         <FlaskConical className="size-4 text-accent" /> <span className="hidden sm:inline">Harness lab</span>
       </div>
       <nav aria-label="Screens" className={SEGMENT_TRACK}>
         {([['run', 'Chat'], ['compare', 'Compare'], ['evals', 'Evals']] as [Screen, string][]).map(([v, l]) => (
           <button key={v} type="button" onClick={() => setScreen(v)} aria-current={screen === v ? 'page' : undefined}
-            className={segmentItem(screen === v)}>
+            className={cn(segmentItem(screen === v), 'max-sm:px-2')}>
             {l}
           </button>
         ))}
       </nav>
-      <div className={cn('ml-2 flex items-center gap-1.5 text-sm', st.tone)} title={st.label}>
+      <div className={cn('flex items-center gap-1.5 text-sm sm:ml-2', st.tone)} title={st.label}>
         {(running && status !== 'awaiting_you') || busy ? <Spinner quiet /> : <span className={cn('size-2 rounded-full forced-color-adjust-none', running ? 'bg-warn' : 'bg-ok')} aria-hidden />}
         <span>{narrow ? st.short : st.label}</span>
       </div>
@@ -110,11 +111,14 @@ export function TopBar({ narrow }: { narrow: boolean }) {
           <Settings className="size-4" />
         </IconButton>
         {!narrow && (
-          <IconButton label="Inspector" aria-pressed={inspectorOpen}
+          // F433: aria-disabled, not disabled, so Tab still reaches it and its reason is read out
+          <IconButton label="Inspector" aria-pressed={inspectorOpen} aria-controls={inspectorOpen ? 'inspector' : undefined}
             tip={screen !== 'run' ? 'The inspector shows model calls in a conversation'
               : !hasCalls ? 'The inspector shows model calls once you send a message'
               : inspectorOpen ? 'Hide the inspector' : 'Show the inspector'}
-            disabled={screen !== 'run' || !hasCalls} onClick={() => setInspectorOpen(!inspectorOpen)}>
+            aria-disabled={screen !== 'run' || !hasCalls ? true : undefined}
+            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
+            onClick={() => { if (screen === 'run' && hasCalls) setInspectorOpen(!inspectorOpen) }}>
             <PanelRight className="size-4" />
           </IconButton>
         )}

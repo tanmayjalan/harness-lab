@@ -18,6 +18,7 @@ import { TopBar } from '../shell/TopBar'
 import { HelpSheet } from '../shell/HelpSheet'
 import { ScoreChart } from '../evals/EvalsScreen'
 import { RunView } from '../run/RunView'
+import { Announcer } from '../shell/Announcer'
 import { ResizeHandle } from '../../App'
 import toolTurn from '../../test/fixtures/tool_turn.json'
 import providerSwitch from '../../test/fixtures/provider_switch.json'
@@ -133,7 +134,8 @@ describe('focus (F016)', () => {
     useServer.setState({ info: null })
     const events = (declined as Array<Record<string, unknown>>)
     useSession.setState({ derived: deriveRuns(events.slice(0, 5) as HarnessEvent[]), loaded: true, running: true })
-    wrap(<RunView composerRef={{ current: null }} />)
+    useUi.setState({ spoken: { text: '', n: 0 } })
+    wrap(<><RunView composerRef={{ current: null }} /><Announcer /></>) // (it speaks through the page's Announcer)
     act(() => { useSession.setState({ derived: deriveRuns(events.slice(0, 7) as HarnessEvent[]) }) })
     expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Message' }))
     expect(screen.getByText(/^Declined\. The harness carries on\./)).toBeInTheDocument() // (a marker makes repeats read out)

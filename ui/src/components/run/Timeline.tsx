@@ -17,6 +17,8 @@ import { usePrefs, useUi } from '../../store/ui'
 import { stopWords } from '../../lib/stopWords'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
+import { inspectCall } from '../../store/selectors'
+import { ONE_COLUMN } from '../../lib/layout'
 import { providerName } from '../composer/providerWords'
 
 type Props = {
@@ -81,6 +83,8 @@ export const Timeline = memo(function Timeline({ model, inspectedCallId, live, r
     <div className="space-y-6">
       {model.runs.map((run) => (
         <div key={run.index} className="space-y-3">
+          {/* F433: a heading per message, so a screen reader can jump between them */}
+          <h2 className="sr-only">Message {run.index}</h2>
           {model.switches.filter((s) => s.beforeRun === run.index).map((s) => (
             <SystemNote key={s.seq} icon={<Shuffle className="size-3.5" />} announce
               after={<Explain concept="switch" quiet className="mt-2 text-left" />}>
@@ -161,7 +165,7 @@ type BodyProps = {
   justFailed: boolean // it ran while you watched: a failure is read out at once
 }
 
-function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, live, active, latest, justFailed }: BodyProps) {
+function RunBody({ run, model, first, inspectedCallId, selectedTool, live, active, latest, justFailed }: BodyProps) {
   const calls = callsOfRun(model, run)
   const plan = latestPlan(model, calls)
   const lastCall = calls[calls.length - 1]
@@ -189,12 +193,9 @@ function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, l
             </div>
           )}
           <CallDivider call={call} selected={call.id === inspectedCallId} multi={model.runs.length > 1}
-            hint={!hintSeen && call.id === model.callOrder[0]} onClick={() => {
-            onSelect(call.id)
-            usePrefs.getState().setInspectorOpen(true) // picking a call is what opens the Inspector
-            // on a narrow screen the inspector is its own view: go there
-            if (typeof matchMedia !== 'undefined' && matchMedia('(max-width: 899px)').matches) useUi.getState().setMobilePane('inspect')
-          }} />
+            hint={!hintSeen && call.id === model.callOrder[0]}
+            // picking a call is what opens the Inspector, and focus goes there (on a narrow screen, its own view)
+            onClick={() => inspectCall(call.id, { focus: true })} />
           {first.history === call.id && <Explain concept="history" quiet />}
           {first.retry === call.id && <Explain concept="retry" quiet />}
           {first.tools_at_once === call.id && <Explain concept="tools_at_once" quiet />}
@@ -305,12 +306,16 @@ function CallDivider({ call, selected, onClick, multi, hint }: DividerProps) {
   const trim = call.trimmed && 'count' in call.trimmed && call.trimmed.count ? call.trimmed : null
   const ref = useRef<HTMLButtonElement>(null)
   const following = useUi((s) => s.followLatest)
+  // F426: the line says whether the Inspector beside the chat is showing it (a narrow screen shows it as another view)
+  const wide = !(typeof matchMedia !== 'undefined' && matchMedia(`(max-width: ${ONE_COLUMN - 1}px)`).matches)
+  const besideChat = usePrefs((s) => s.inspectorOpen) && wide
   // Picked by hand ([ ], the size chart): bring it into view in the chat too
   useEffect(() => {
     if (selected && !following) ref.current?.scrollIntoView?.({ block: 'nearest' })
   }, [selected, following])
   return (
     <button ref={ref} type="button" onClick={() => { usePrefs.getState().sawInspectHint(); onClick() }} aria-current={selected ? 'true' : undefined}
+      data-call-id={call.id} aria-controls={besideChat ? 'inspector' : undefined} aria-expanded={wide ? besideChat && selected : undefined}
       title="Inspect this call: what was sent and what came back"
       className={cn('group flex w-full items-center gap-2 rounded py-0.5 text-xs transition-colors focus-ring',
         selected ? 'text-accent' : 'text-muted hover:text-fg')}>
@@ -370,12 +375,14 @@ function AnswerBubble({ run, calls, waitedForYou, pinned }: { run: Run; calls: C
   return (
     <div className="group space-y-1">
       <div className="rounded-2xl rounded-bl-md border border-line bg-panel px-4 py-3 shadow-sm">
-        <span className="sr-only">Model:</span>
+        <h3 className="sr-only">The model's reply</h3>
         <Markdown text={run.answer!.text} />
       </div>
       {/* Each item carries its dot in front; the first one on every line is pushed past the clipped left
           edge (the margin, not padding, so the clip is at the text's edge), so no line starts with "·" */}
-      <div className={cn('ml-1 overflow-hidden text-xs text-muted', !pinned && ON_HOVER)}>
+      {/* F431: on older replies the numbers show on hover, or when Tab reaches them (nothing else inside can take focus) */}
+      <div className={cn('ml-1 overflow-hidden text-xs text-muted', !pinned && cn(ON_HOVER, 'rounded focus:opacity-100 focus-ring'))}
+        {...(!pinned ? { tabIndex: 0, role: 'group', 'aria-label': 'Numbers for this reply' } : {})}>
         <div className="-ml-3 flex flex-wrap">
           <span className={SEP}>{providerName(info?.providers, run.answer!.provider)} · <code>{run.answer!.model}</code></span>
           <span className={SEP}>{plural(calls.length, 'call')}</span>
