@@ -123,15 +123,16 @@ def missing_key(name):
     return None  # mock needs no key
 
 
-def make_client(name, base_url=None):
-    """An SDK client for the named provider. Raises MissingKey with instructions if its key is missing."""
+def make_client(name, base_url=None, api_key=None):
+    """An SDK client for the named provider. Raises MissingKey with instructions if its key is missing.
+    `api_key` overrides the key (the mock's own random key, from mock_server.serve)."""
     p = PROVIDERS[name]
     if missing_key(name):
         raise MissingKey(
             f"{p['label']} needs {p['key_env']} set. In PowerShell run:\n"
             f'  setx {p["key_env"]} "<your key>"'
         )
-    key = get_key(p["key_env"]) if p["key_env"] else "mock"
+    key = api_key or (get_key(p["key_env"]) if p["key_env"] else "mock")
     # No quiet retries in the SDK: the loop tries again itself, so you see each retry (loop.retry_reason).
     # (Summarising and the eval judge ask for quiet retries for their own calls: with_quiet_retries.)
     return anthropic.Anthropic(api_key=key, base_url=base_url or p["base_url"], max_retries=0)

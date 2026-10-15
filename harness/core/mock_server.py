@@ -7,18 +7,24 @@ and sends that back shaped like a real Messages API reply, tool calls included.
 
 Real replies, no API key: it runs on your Claude Code login instead.
 
-Run:   .venv\Scripts\python -m harness.core.mock_server   (listens on http://127.0.0.1:8765)
-Then:  set ANTHROPIC_BASE_URL=http://127.0.0.1:8765 and ANTHROPIC_API_KEY=mock
-       in the window where you run your own Anthropic-SDK code.
+Run:   .venv\Scripts\python -m harness.core.mock_server   (listens on http://127.0.0.1:8765 and prints its key)
+Then:  set ANTHROPIC_BASE_URL=http://127.0.0.1:8765 and ANTHROPIC_API_KEY=<the key it printed>
+       in the window where you run your own Anthropic-SDK code. (Set MOCK_KEY first to choose the key.)
        (The web page, terminal version and evals start their own copy, so you rarely need this.)
 Check: .venv\Scripts\python -m harness.core.mock_server --check   (one small `claude -p` call; setup.bat runs it)
+
+Only the harness may use it: a request must be addressed to this computer (127.0.0.1), be JSON and carry
+the key. Each run spends your Claude Code plan, and any web page you visit can send requests to this computer.
 """
+import hmac
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -209,10 +215,16 @@ def read_reply(stream, tool_names):
 
 
 class Handler(BaseHTTPRequestHandler):
+    key = None  # the key a request must carry (set by serve()); with none set, every request is refused
+
     def do_POST(self):
         if self.path.split("?")[0] != "/v1/messages":
             return self.send_json(404, error("not_found_error", f"mock server only serves /v1/messages, not {self.path}"))
-        request = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))  # read first, even to refuse:
+        refused = self.refusal()                                            # unread bytes reset the connection
+        if refused:
+            return self.send_json(*refused)
+        request = json.loads(body)
         if request.get("stream"):
             return self.send_json(400, error("invalid_request_error", "mock server does not support streaming"))
 
@@ -239,6 +251,19 @@ class Handler(BaseHTTPRequestHandler):
                 else "it answered")
         print(f"  mock: {n} message{'' if n == 1 else 's'} in; {what} ({time.time() - started:.1f}s)")
         self.send_json(200, reply)
+
+    def refusal(self):
+        """Why this request may not use the mock, or None. Each run spends your Claude Code plan, so only the
+        harness may ask: any web page you visit can send a request to 127.0.0.1, but it can't set the right
+        Host, send JSON without the browser asking this server first, or know the key."""
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+        if host not in ("localhost", "127.0.0.1"):
+            return 403, error("permission_error", "use http://127.0.0.1")
+        if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
+            return 415, error("invalid_request_error", "send JSON (Content-Type: application/json)")
+        if not self.key or not hmac.compare_digest(self.headers.get("x-api-key") or "", self.key):
+            return 401, error("authentication_error", "wrong or missing key for this mock server")
+        return None
 
     def send_json(self, status, body, headers=None):
         data = json.dumps(body).encode("utf-8")
@@ -321,6 +346,16 @@ def error(kind, message):
     return {"type": "error", "error": {"type": kind, "message": message}}
 
 
+def serve(port=0, key=None):
+    """Start the mock on 127.0.0.1 (port 0: any free port) in a background thread. Returns the server and
+    the key a client must send as its API key (a new random one unless you give one)."""
+    key = key or secrets.token_urlsafe(24)
+    handler = type("KeyedHandler", (Handler,), {"key": key})
+    server = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, key
+
+
 def check(model="claude-haiku-4-5-20251001"):
     """One small `claude -p` call made exactly as the mock makes them (setup.bat runs this).
     Haiku, as the quickest. Returns an exit code: 0 if it worked."""
@@ -337,8 +372,10 @@ def check(model="claude-haiku-4-5-20251001"):
 if __name__ == "__main__":
     if sys.argv[1:] == ["--check"]:
         sys.exit(check())
+    server, key = serve(PORT, os.environ.get("MOCK_KEY"))
     print(f"Mock Anthropic API on http://127.0.0.1:{PORT}  (replies come from `claude -p`; Ctrl+C to stop)")
+    print(f"Its key (send it as the API key): {key}")
     try:
-        ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+        threading.Event().wait()  # the server runs in its own thread; wait here until Ctrl+C
     except KeyboardInterrupt:
-        pass
+        server.shutdown()

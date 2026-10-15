@@ -75,6 +75,20 @@ def kill_tree(proc):
         proc.wait()
 
 
+SHOW_LIMIT = 20_000      # characters of a script file shown before you allow it
+
+
+def script_text(path):
+    """What a script file says now, so you can read it before you allow it (a script run by path, not code
+    the model wrote). Returns {"text", "cut"} or {"error"}. The file could still change before it runs."""
+    from harness.core import tools  # here, not at the top: tools.py imports this file
+    try:
+        text = tools.resolve(path).read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return {"error": f"can't be read ({e.strerror or e})"}  # shown after "The file"
+    return {"text": text[:SHOW_LIMIT], "cut": len(text) > SHOW_LIMIT}
+
+
 def run_python(code=None, path=None, should_stop=None):
     """Run a script and return what it printed. Exactly one of the two:
       `code`: a script the model wrote. It goes in a temporary file outside the workspace, so it never
