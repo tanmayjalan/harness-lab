@@ -25,7 +25,7 @@ const key = (k: string) => act(() => { window.dispatchEvent(new KeyboardEvent('k
 
 beforeEach(() => {
   useUi.setState({ toasts: [], approvalDock: null, screen: 'run', selectedCallId: null, selectedToolId: null, followLatest: true,
-    mobilePane: 'chat', experimentId: null, guess: null, focusInspector: false, chatPlace: null, spoken: { text: '', n: 0 } })
+    mobilePane: 'chat', experimentId: null, guess: null, focusInspector: false, spoken: { text: '', n: 0 } })
   usePrefs.setState({ explained: [], learningMode: false, inspectorOpen: false, inspectHintSeen: true })
   useServer.setState({ info: null })
 })
@@ -129,25 +129,24 @@ describe('F428: what is read out while and after a message runs', () => {
 })
 
 describe('F429: the narrow Inspect view and back', () => {
-  it('coming back to the chat keeps its place and puts focus on the call you picked', () => {
-    const tops = new WeakMap<Element, number>()
-    const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')!
-    Object.defineProperty(Element.prototype, 'scrollTop', { configurable: true, get() { return tops.get(this) ?? 0 }, set(v: number) { tops.set(this, v) } })
+  it('the chat stays put under the Inspect view; coming back puts focus on the call you picked', async () => {
+    // a narrow window (one column, as at 200% zoom)
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} }))
     try {
-      useSession.setState({ conversation: 'c1', derived: deriveRuns(events(toolTurn)), loaded: true, running: false, origin: null, frozen: false })
-      const first = render(<RunView composerRef={{ current: null }} />)
-      const scroller = first.container.querySelector('.overflow-y-auto')!
-      scroller.scrollTop = 40
-      fireEvent.scroll(scroller)
-      act(() => { useUi.getState().selectCall(useSession.getState().derived.callOrder[0]); useUi.getState().setMobilePane('inspect') })
-      first.unmount()
-      expect(useUi.getState().chatPlace).toEqual({ conversation: 'c1', runs: 1, top: 40 })
-      act(() => useUi.getState().setMobilePane('chat'))
-      const again = render(<RunView composerRef={{ current: null }} />)
-      expect(again.container.querySelector('.overflow-y-auto')!.scrollTop).toBe(40)
-      expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Call 1/ }))
+      await page()
+      const scroller = document.querySelector('main .overflow-y-auto')!
+      fireEvent.click(screen.getByRole('button', { name: /^Call 1/ }))
+      expect(useUi.getState().mobilePane).toBe('inspect')
+      await waitFor(() => expect(document.getElementById('inspector')!.contains(document.activeElement)).toBe(true))
+      // the same chat, not a new one: its scroll position and contents are kept, out of sight and out of reach
+      expect(document.querySelector('main .overflow-y-auto')).toBe(scroller)
+      expect(scroller.closest('[inert]')).not.toBeNull()
+      fireEvent.click(within(screen.getByRole('group', { name: 'Show' })).getByRole('button', { name: 'Chat' }))
+      expect(document.querySelector('main .overflow-y-auto')).toBe(scroller)
+      expect(scroller.closest('[inert]')).toBeNull()
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Call 1/ })))
     } finally {
-      Object.defineProperty(Element.prototype, 'scrollTop', desc)
+      vi.unstubAllGlobals()
     }
   })
 })
@@ -183,5 +182,16 @@ describe('F431, F433: older replies and headings', () => {
     render(<Timeline model={two()} inspectedCallId={null} live="" running={false} />)
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Message 1', 'Message 2'])
     expect(screen.getAllByRole('heading', { level: 3, name: "The model's reply" })).toHaveLength(2)
+  })
+})
+
+describe('F432: the top bar on a phone', () => {
+  // (the fit itself is checked in a browser at 390 px: jsdom has no layout)
+  it('drops the logo and tightens the screen buttons below the small breakpoint', () => {
+    render(<App />)
+    const header = document.querySelector('header')!
+    expect(header.className).toMatch(/\bgap-1\b.*sm:gap-2/)
+    expect(within(header).getByText('Harness lab').closest('div')!.className).toMatch(/\bhidden\b.*sm:flex/)
+    expect(within(header).getByRole('button', { name: 'Chat' }).className).toMatch(/max-sm:px-2/)
   })
 })
