@@ -341,6 +341,68 @@ class EvalsHttpTests(unittest.TestCase):
         self.start(Answers("x"))
         self.assertEqual(self.call("POST", "/evals/stop", {})[0], 409)
 
+    def run_round(self, body):
+        import time
+        status, data = self.call("POST", "/evals", body)
+        self.assertEqual(status, 202, data)
+        end = time.time() + 10
+        while self.call("GET", "/evals/status")[1]["running"] and time.time() < end:
+            time.sleep(0.05)
+        return self.call("GET", "/evals/status")[1]["result"]
+
+    def test_my_settings_reach_every_question_as_in_compare(self):
+        # F376: "Use my settings" used to pass only the prompt, tools and permissions. Now each question is set up
+        # by compare.setup, as a side of a comparison is: thinking, caching, limits and your hooks all apply
+        import tempfile
+        import threading
+        from unittest import mock
+        from harness.features import hooks
+        from harness.web import server as web_server
+        folder = pathlib.Path(tempfile.mkdtemp())
+        settings = {"thinking": {"enabled": True, "budget": 2000}, "cache": {"enabled": True},
+                    "limits": {"max_tokens": 3000, "max_turns": 4}, "system": "Be terse."}
+        (folder / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+        hook_file = folder / "my_hooks.py"
+        hook_file.write_text("def before_tool(name, args):\n    return None\n", encoding="utf-8")
+        sent = []
+
+        class Recording(Answers):
+            def create(self, **kw):
+                sent.append(kw)
+                return super().create(**kw)
+
+        session = web_server.Session(Answers("x"), "test", provider="mock", settings_path=folder / "settings.json",
+                                     profile_path=folder / "profile.json")
+        self.server = web_server.make_server(session, 0, Clients(Recording("4")))
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        with mock.patch.object(hooks, "PATH", hook_file):
+            mine = self.run_round({"provider": "mock", "only": "2,450", "judge": False, "use_my_settings": True})
+            request = sent[-1]
+            # the same question as a side of a comparison, from the same settings: the same request
+            status, _ = self.call("POST", "/compare", {"text": request["messages"][0]["content"][0]["text"],
+                                                      "sides": [{"provider": "mock"}]})
+            self.assertEqual(status, 200)
+        compared = sent[-1]
+        self.assertEqual({k: v for k, v in request.items()}, compared)
+        self.assertEqual(request["max_tokens"], 3000)
+        self.assertEqual(request["thinking"], {"type": "enabled", "budget_tokens": 2000})
+        self.assertEqual(request["system"][0]["cache_control"], {"type": "ephemeral"})  # caching on
+        self.assertTrue(request["system"][0]["text"].startswith("Be terse."))
+        for word in ("the system prompt", "thinking on", "caching on", "limits changed", "your hooks (before_tool)"):
+            self.assertIn(word, mine["setup"])
+        self.assertEqual(mine["config"]["system"], request["system"][0]["text"])  # kept with the round (F442)
+        self.assertTrue(mine["questions_hash"])
+
+        sent.clear()
+        defaults = self.run_round({"provider": "mock", "only": "2,450", "judge": False})
+        self.assertEqual(sent[-1]["max_tokens"], loop.MAX_TOKENS)
+        self.assertNotIn("thinking", sent[-1])
+        self.assertEqual(sent[-1]["system"], loop.SYSTEM)
+        self.assertEqual(defaults["setup"], [])
+        self.assertEqual(defaults["questions_hash"], mine["questions_hash"])  # the same questions
+
     def test_bad_requests_are_refused(self):
         self.start(Answers("x"))
         self.assertEqual(self.call("POST", "/evals", {"provider": "nope"})[0], 400)

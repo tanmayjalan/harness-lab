@@ -826,33 +826,17 @@ class Handler(BaseHTTPRequestHandler):
         saved = lab_settings.load(self.session.settings_path)
         settings = lab_settings.clean(merge_settings(saved, spec.get("settings") or {}), loop.SYSTEM,
                                       self.session.base_tools, self.session.default_permission)
-        system = lab_settings.system_prompt(settings, loop.SYSTEM)
         facts = memory.load(self.session.profile_path) if include_profile else []
-        system = memory.system_prompt(system, facts)
-        found = skills.load_all()
-        system = skills.system_prompt(system, settings.get("skills"), found)
-        offered = lab_settings.offered_tools(settings, self.session.base_tools)
-        tool_list = providers.tools_for(name, [*offered, skills.SKILL_TOOL] if skills.offers_tool(settings.get("skills"), found)
-                                        else offered)
-        permission = lab_settings.permission(settings, self.session.default_permission)
-        label = str(spec.get("label") or p["label"])[:60]
-        trim = settings.get("trim") or {}
-        prepare = None
-        if history and trim.get("enabled") and name != "anthropic":  # trimming only matters with a history
-            prepare = lambda msgs, k=trim.get("keep_last", 2): trimming.trim(msgs, keep_last=k)[0]  # noqa: E731
-        return {"label": label, "provider": name, "model": model, "client": self.server.clients.get(name),
-                "system": system, "tools": tool_list, "permission": permission, "run": self.session.run_tool,
-                "hooks": hooks.load(), "cost": lambda usage, n=name, m=model: providers.cost(n, usage, m),
-                "history": history, "prepare": prepare,
-                "thinking": lab_settings.thinking_spec(settings, providers.thinking_style(name)),
-                "cache": lab_settings.caching(settings), "allow_ask": bool(spec.get("allow_ask")),
-                "max_tokens": lab_settings.limits(settings)[0], "max_turns": lab_settings.limits(settings)[1],
-                "at_once": self.session._at_once(settings), "busy": lab_settings.busy(settings),
-                "workflow_on": lab_settings.workflow(settings),
-                "extra_tools": lab_settings.extra_tools(settings),  # (run_one starts a Toolbox for each run)
-                "config": lab_settings.snapshot(settings, provider=name, label=p["label"], model=model, system=system,
-                                                facts_shared=len(memory.shared(facts)), tools=tool_list,
-                                                permission=permission, source=self.session.tool_source)}
+        return compare.setup(name, model, settings, client=self.server.clients.get(name), **self._yours(),
+                             facts=facts, history=history, label=spec.get("label"), allow_ask=bool(spec.get("allow_ask")))
+
+    def _yours(self):
+        """The parts of a setup that come from this lab rather than from the settings file: its tools (MCP ones
+        included), their default rules, and the code that runs them."""
+        mcp = self.session.mcp
+        return {"base_tools": self.session.base_tools, "default_permission": self.session.default_permission,
+                "run": self.session.run_tool, "tool_source": self.session.tool_source,
+                "is_mcp": (lambda tool: mcp.handles(tool)) if mcp else (lambda tool: False)}
 
     def start_evals(self, body):
         """Run config/evals.json in the background; the page polls GET /evals/status. One at a time.
@@ -869,9 +853,20 @@ class Handler(BaseHTTPRequestHandler):
         if not cases:
             return self.send_json(400, {"error": "no questions match"})
         try:
-            self.server.clients.get(name)
+            client = self.server.clients.get(name)
         except providers.MissingKey as e:
             return self.send_json(400, {"error": str(e)})
+        # Each question runs as a side of a comparison would (compare.setup): with your settings, every one of them
+        # and your hooks and MCP tools; with the defaults, none of them. Facts about you are left out either way
+        mine = bool(body.get("use_my_settings"))
+        if mine:
+            settings = lab_settings.clean(lab_settings.load(self.session.settings_path), loop.SYSTEM,
+                                          self.session.base_tools, self.session.default_permission)
+            side = compare.setup(name, model, settings, client=client, **self._yours())
+        else:
+            settings = lab_settings.empty()
+            side = compare.setup(name, model, settings, client=client, use_hooks=False)
+        changed = lab_settings.what_changed(settings) if mine else []
         status = self.server.evals_status
         with self.server.evals_lock:
             if status.get("running"):
@@ -887,8 +882,8 @@ class Handler(BaseHTTPRequestHandler):
         def work():
             try:
                 run_id = evals.new_run_id()
-                result = evals.run_suite(name, cases, model=model, repeat=repeat,
-                                         use_my_settings=bool(body.get("use_my_settings")),
+                result = evals.run_suite(name, cases, model=model, repeat=repeat, use_my_settings=mine,
+                                         side=side, settings_changed=changed,
                                          judge_with="mock" if body.get("judge", True) else None,
                                          settings_path=self.session.settings_path, clients=self.server.clients,
                                          on_progress=progress, cancel=self.server.evals_cancel, only=body.get("only"),
