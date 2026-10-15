@@ -1,7 +1,7 @@
 // Page state that isn't the server's: which call is selected, which screen and panels are
 // open, toasts, and preferences kept between visits.
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import type { SettingsChange } from '../api/types'
 
 export type Screen = 'run' | 'compare' | 'evals'
@@ -35,6 +35,7 @@ type UiState = {
   toasts: Toast[]
   experimentId: string | null // the experiment this conversation is following
   guess: string | null // your prediction for it, before sending
+  experimentConversation: string | null // the conversation its message was sent in, once it was
   experimentsOpen: boolean
   draft: { text: string; n: number } // text to put in the message box (n changes each time)
   approvalDock: ApprovalDockHandle | null // the approval panel on screen, if any: the A and D keys answer through it
@@ -75,7 +76,16 @@ function remember() {
   returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null
 }
 
-export const useUi = create<UiState>((set, get) => ({
+// F411: an experiment you were following comes back after a reload (it was set aside in this tab)
+let restoredExperiment = false
+// True once, after a reload brought an experiment back: the message box can get its message again
+export function takeRestoredExperiment() {
+  const was = restoredExperiment
+  restoredExperiment = false
+  return was
+}
+
+export const useUi = create<UiState>()(persist((set, get) => ({
   screen: 'run',
   selectedCallId: null,
   selectedToolId: null,
@@ -90,6 +100,7 @@ export const useUi = create<UiState>((set, get) => ({
   toasts: [],
   experimentId: null,
   guess: null,
+  experimentConversation: null,
   experimentsOpen: false,
   draft: { text: '', n: 0 },
   approvalDock: null,
@@ -137,7 +148,7 @@ export const useUi = create<UiState>((set, get) => ({
   setSidebarSheet: (sidebarSheet) => set({ sidebarSheet }),
   startCompare: (compareDraft) => set({ compareDraft, screen: 'compare' }),
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
-  setExperiment: (experimentId) => set({ experimentId, guess: null }),
+  setExperiment: (experimentId) => set({ experimentId, guess: null, experimentConversation: null }),
   setGuess: (guess) => set({ guess }),
   setExperimentsOpen: (experimentsOpen) => { if (experimentsOpen && !get().experimentsOpen) remember(); set({ experimentsOpen }) },
   fillDraft: (text) => set((s) => ({ draft: { text, n: s.draft.n + 1 } })),
@@ -150,6 +161,13 @@ export const useUi = create<UiState>((set, get) => ({
     else next[key] = text
     return { settingsDrafts: next }
   }),
+}), {
+  // Only the experiment you are following, and only for this tab (sessionStorage): a reload keeps it,
+  // a visit another day starts without it
+  name: 'harness-lab-experiment',
+  storage: createJSONStorage(() => sessionStorage),
+  partialize: (s) => ({ experimentId: s.experimentId, guess: s.guess, experimentConversation: s.experimentConversation }),
+  onRehydrateStorage: () => (state) => { if (state?.experimentId) restoredExperiment = true },
 }))
 
 // Plain notes go after 6 seconds; errors and ones with a button (Undo) stay 20 seconds, and any of

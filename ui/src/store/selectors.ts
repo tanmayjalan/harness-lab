@@ -96,7 +96,8 @@ export async function openConversation(id: string, opts?: { goneToast?: boolean 
   try {
     useServer.getState().setConversations(await api.openConversation(id))
     useUi.getState().follow()
-    useUi.getState().setExperiment(null)
+    // F411: reopening the experiment's own conversation (a reload, the address) keeps it
+    if (useUi.getState().experimentConversation !== id) useUi.getState().setExperiment(null)
     useUi.getState().setScreen('run')
     poke?.()
     return true

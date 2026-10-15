@@ -7,6 +7,8 @@ import { deriveRuns } from '../../model/derive'
 import { useSession } from '../../store/session'
 import { usePrefs, useUi } from '../../store/ui'
 import { RunView } from './RunView'
+import { api } from '../../api/client'
+import { openConversation } from '../../store/selectors'
 import toolTurn from '../../test/fixtures/tool_turn.json'
 import answer from '../../test/fixtures/answer.json'
 import { EXPERIMENTS, experimentDone, findExperiment, nextExperiment } from '../../learn/experiments'
@@ -192,5 +194,45 @@ describe('F410: Runaway task counts as done when it stops at the call limit', ()
     const cutoff = findExperiment('cutoff')!
     const limited = deriveRuns(stoppedAt(cutoff.message, 'RuntimeError: Stopped: hit max_turns (2)') as HarnessEvent[]).runs[0]
     expect(experimentDone(cutoff, limited, 'mock')).toBe(false)
+  })
+})
+
+describe('F411: the experiment you were following survives a reload', () => {
+  const stored = () => JSON.parse(sessionStorage.getItem('harness-lab-experiment') ?? '{}').state
+  // a reload: the tab's saved copy is read back into a page that starts with nothing
+  const reload = async (saved: object) => {
+    useUi.setState({ experimentId: null, guess: null, experimentConversation: null, composerText: '' }) // (this saves too: first)
+    sessionStorage.setItem('harness-lab-experiment', JSON.stringify({ state: saved, version: 0 }))
+    await useUi.persist.rehydrate()
+  }
+  afterEach(() => sessionStorage.clear())
+
+  it('the experiment and your guess are kept in this tab, and come back', async () => {
+    useUi.getState().setExperiment('approval')
+    useUi.getState().setGuess('2')
+    expect(stored()).toEqual({ experimentId: 'approval', guess: '2', experimentConversation: null })
+    await reload({ experimentId: 'approval', guess: '2', experimentConversation: 'c1' })
+    expect(useUi.getState()).toMatchObject({ experimentId: 'approval', guess: '2', experimentConversation: 'c1' })
+  })
+
+  it('once its message is sent, the experiment belongs to that conversation', () => {
+    useUi.setState({ experimentId: 'loop', experimentConversation: null })
+    show(toolTurn)
+    expect(useUi.getState().experimentConversation).toBe('c1')
+  })
+
+  it("reopening the experiment's own conversation (the reload opens the one in the address) keeps it; another drops it", async () => {
+    vi.spyOn(api, 'openConversation').mockResolvedValue({ current: 'c1', items: [] })
+    useUi.setState({ experimentId: 'loop', guess: '3', experimentConversation: 'c1' })
+    await openConversation('c1')
+    expect(useUi.getState()).toMatchObject({ experimentId: 'loop', guess: '3' })
+    await openConversation('c2')
+    expect(useUi.getState().experimentId).toBeNull()
+  })
+
+  it('an experiment not sent yet puts its message back in the empty message box', async () => {
+    await reload({ experimentId: 'approval', guess: null, experimentConversation: null })
+    show([])
+    expect(useUi.getState().draft.text).toBe(findExperiment('approval')!.message)
   })
 })
