@@ -110,11 +110,14 @@ export function TopBar({ narrow }: { narrow: boolean }) {
           <Settings className="size-4" />
         </IconButton>
         {!narrow && (
-          <IconButton label="Inspector" aria-pressed={inspectorOpen}
+          // F433: aria-disabled, not disabled, so Tab still reaches it and its reason is read out
+          <IconButton label="Inspector" aria-pressed={inspectorOpen} aria-controls={inspectorOpen ? 'inspector' : undefined}
             tip={screen !== 'run' ? 'The inspector shows model calls in a conversation'
               : !hasCalls ? 'The inspector shows model calls once you send a message'
               : inspectorOpen ? 'Hide the inspector' : 'Show the inspector'}
-            disabled={screen !== 'run' || !hasCalls} onClick={() => setInspectorOpen(!inspectorOpen)}>
+            aria-disabled={screen !== 'run' || !hasCalls ? true : undefined}
+            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
+            onClick={() => { if (screen === 'run' && hasCalls) setInspectorOpen(!inspectorOpen) }}>
             <PanelRight className="size-4" />
           </IconButton>
         )}

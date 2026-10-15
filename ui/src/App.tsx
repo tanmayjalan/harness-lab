@@ -7,7 +7,7 @@ import { PollClient } from './api/poll'
 import { cn } from './lib/cn'
 import { inspectorRoom, inspectorWidthCss, ONE_COLUMN, shownInspectorWidth, useViewportWidth } from './lib/layout'
 import { useShortcuts } from './lib/shortcuts'
-import { escapeStops, newConversation, onRunScreen, openConversation, setPoke, stop } from './store/selectors'
+import { callDivider, escapeStops, inspectCall,newConversation, onRunScreen, openConversation, setPoke, stop } from './store/selectors'
 import { isRoute, parseHash, toHash } from './lib/route'
 import { useServer } from './store/server'
 import { useSession } from './store/session'
@@ -203,7 +203,7 @@ export function App() {
           {!narrow && screen === 'run' && inspectorOpen && hasCalls && (
             <div className="relative shrink-0 border-l border-line" style={{ width: inspectorWidthCss(inspectorWidth, !sidebarCollapsed) }}>
               <ResizeHandle />
-              <Inspector onClose={() => usePrefs.getState().setInspectorOpen(false)} />
+              <Inspector onClose={closeInspector} />
             </div>
           )}
         </div>
@@ -288,14 +288,27 @@ export function ResizeHandle() {
   )
 }
 
-// [ and ]: step to the previous or next model call
+// [ and ]: step to the previous or next model call. It opens the Inspector and reads the call out (F425);
+// at either end it says so, rather than nothing
 function step(d: number) {
   const order = useSession.getState().derived.callOrder
   if (!order.length) return
   const ui = useUi.getState()
   const current = ui.followLatest || !ui.selectedCallId ? order[order.length - 1] : ui.selectedCallId
-  const i = Math.max(0, Math.min(order.length - 1, order.indexOf(current) + d))
-  ui.selectCall(order[i])
+  const at = order.indexOf(current)
+  const i = Math.max(0, Math.min(order.length - 1, at + d))
+  const stuck = i === at && (d < 0 || !ui.followLatest)
+  inspectCall(order[i], { before: stuck ? (d < 0 ? 'Already at the first call. ' : 'Already at the newest call. ') : '' })
+}
+
+// F426: hiding the Inspector puts focus back on the call it showed, in the chat (its button is gone)
+function closeInspector() {
+  usePrefs.getState().setInspectorOpen(false)
+  const order = useSession.getState().derived.callOrder
+  const ui = useUi.getState()
+  const id = !ui.followLatest && ui.selectedCallId && order.includes(ui.selectedCallId) ? ui.selectedCallId : order[order.length - 1]
+  const divider = callDivider(id)
+  ;(divider ?? document.getElementById('main'))?.focus()
 }
 
 // "Re-run with current settings" on a past message: the saved run against a new one

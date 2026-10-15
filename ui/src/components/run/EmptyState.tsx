@@ -163,7 +163,7 @@ export function EmptyState({ disabled }: { disabled: boolean }) {
         <h1 className="text-lg font-semibold">See how an AI agent harness works</h1>
         <p className="mx-auto max-w-xl text-sm text-muted">
           Send a message and watch the loop: the harness calls the model, runs the tools it asks for, and
-          calls it again until it answers. Click any call to look inside it on the right.
+          calls it again until it answers. Click any call to look inside it in the Inspector.
         </p>
         {provider === 'mock' && (
           <p className="mx-auto max-w-xl text-sm text-muted">
