@@ -37,6 +37,10 @@ export function DisplaySection() {
           <input type="checkbox" checked={prefs.learningMode} onChange={(e) => prefs.setLearningMode(e.target.checked)} />
           Learning mode: always show every explanation in full
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={prefs.alwaysDetails} onChange={(e) => prefs.setAlwaysDetails(e.target.checked)} />
+          Always show details under each answer (every call, its tokens and tool rows), not only the steps
+        </label>
         <Button size="sm" onClick={() => { prefs.resetExplained(); toast({ kind: 'ok', title: 'Explanations will show in full once more' }) }}>
           Show all explanations again once
         </Button>

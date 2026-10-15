@@ -128,7 +128,7 @@ export function ExperimentReveal({ model }: { model: RunModel }) {
   return (
     <Callout tone="info" data-testid="experiment-reveal" className="mt-4 space-y-1.5">
       <h2 className="flex items-center gap-1.5 font-medium">
-        <FlaskConical className="size-4 shrink-0 text-accent" aria-hidden /> {x.title}: what happened
+        <FlaskConical className="size-4 shrink-0 text-accent" aria-hidden /> What just happened: {x.title}
       </h2>
       {x.predict && (
         <p className={cn('rounded-md px-2 py-1', guess ? (guess === x.predict.actual(model, run) ? 'bg-ok-soft' : 'bg-warn-soft') : 'bg-panel/70')}>

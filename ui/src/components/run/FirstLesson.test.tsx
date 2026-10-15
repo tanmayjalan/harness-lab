@@ -111,7 +111,7 @@ describe('F406: a tool row opens the Inspector, and where to look stays after th
     useUi.setState({ experimentId: 'loop' })
     show(toolTurn)
     const reveal = screen.getByTestId('experiment-reveal')
-    expect(reveal.textContent).toMatch(/Look at:.*Click a tool row/)
+    expect(reveal.textContent).toMatch(/Look at:.*Click what the model asked for/)
     fireEvent.click(screen.getByRole('button', { name: 'Open Inspector → Tools' }))
     expect(usePrefs.getState()).toMatchObject({ inspectorOpen: true, inspectorTab: 'tools' })
     const m = useSession.getState().derived

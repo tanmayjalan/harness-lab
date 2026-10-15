@@ -216,6 +216,7 @@ type Prefs = {
   explained: string[] // concepts already explained in full once
   experimentsDone: string[] // experiments you've run to the end
   experimentBefore: ExperimentBefore | null
+  alwaysDetails: boolean // every message opens with its details (calls, tokens, tool rows), not only the story
   inspectHintSeen: boolean // you have clicked a call line once, so the "inspect →" hint can go
   quizAnswers: Record<string, number> // Help → Quiz me: the option you picked per question
   fontSize: FontSize
@@ -231,6 +232,7 @@ type Prefs = {
   setExperimentBefore: (b: ExperimentBefore | null) => void
   resetExperimentsDone: () => void
   sawInspectHint: () => void
+  setAlwaysDetails: (on: boolean) => void
   answerQuiz: (id: string, option: number | null) => void
   resetExplained: () => void
   setFontSize: (f: FontSize) => void
@@ -249,6 +251,7 @@ export const usePrefs = create<Prefs>()(
       experimentsDone: [],
       experimentBefore: null,
       inspectHintSeen: false,
+      alwaysDetails: false,
       quizAnswers: {},
       fontSize: 'md',
       // (no version bump: the stored prefs are merged over these defaults, so a page saved before has System)
@@ -273,6 +276,7 @@ export const usePrefs = create<Prefs>()(
       setExperimentBefore: (experimentBefore) => set({ experimentBefore }),
       resetExperimentsDone: () => set({ experimentsDone: [] }),
       sawInspectHint: () => set({ inspectHintSeen: true }),
+      setAlwaysDetails: (alwaysDetails) => set({ alwaysDetails }),
       setFontSize: (fontSize) => set({ fontSize }),
       setTheme: (theme) => set({ theme }),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
