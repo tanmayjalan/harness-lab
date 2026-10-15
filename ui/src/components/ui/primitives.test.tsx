@@ -38,7 +38,9 @@ describe('primitives', () => {
     expect(screen.getByText('quiet error').className).toContain('text-xs')
     expect(screen.getByText('quiet error')).not.toHaveAttribute('role')
     expect(screen.getByRole('alert')).toHaveTextContent('loud error')
-    expect(screen.getByTestId('info').className).toContain('bg-accent-soft')
+    // information is grey with a bar on the left: blue is for things you can click and the current thing
+    expect(screen.getByTestId('info').className).toContain('bg-sunken')
+    expect(screen.getByTestId('info').className).not.toMatch(/accent/)
   })
 
   it('a Disclosure is a native details whose summary has no marker and a turning chevron', () => {
@@ -148,7 +150,7 @@ describe('primitives', () => {
     const box = screen.getByRole('button', { name: 'Got it, shorten this next time' }).closest('div.border')!
     expect(box.className).toMatch(/\bspace-y-1\.5\b/)
     expect(box.className).toMatch(/\bpr-8\b/)
-    expect(box.className).toContain('bg-accent-soft')
+    expect(box.className).toContain('bg-sunken')
   })
 
   it('the focus-ring utility keeps a visible outline (Tailwind v4: outline-none would set the style to none)', () => {

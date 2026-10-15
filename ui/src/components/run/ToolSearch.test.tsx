@@ -53,7 +53,8 @@ describe('a tool found first, then used', () => {
   it("find_tool's row says what it loaded, and the timeline explains it", () => {
     render(<RTooltip.Provider><Timeline model={deriveRuns(findTool as HarnessEvent[])} inspectedCallId={null} live="" running={false} /></RTooltip.Provider>)
     expect(text()).toMatch(/loaded: book_room, /)
-    expect(text()).toMatch(new RegExp(CONCEPTS.tool_search.plain))
+    // one full explanation at a time: an earlier one (the loop) is open, so this one waits as a named ⓘ here
+    expect(screen.getByRole('button', { name: `What does "${CONCEPTS.tool_search.term}" mean?` })).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /book_room/ }).length).toBeGreaterThan(0)
   })
 
