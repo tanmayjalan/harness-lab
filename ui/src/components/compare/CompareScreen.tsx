@@ -81,7 +81,7 @@ export function CompareScreen() {
         </div>
 
         {c.busy && <Waiting onStop={() => void c.stop()} />}
-        {c.results && <Results previous={!!c.busy} onChange={() => form.current?.scrollIntoView({ block: 'start' })} />}
+        {c.results && <Results previous={!!c.busy} onChange={() => form.current?.scrollIntoView?.({ block: 'start' })} />}
 
         {c.busy !== 'rerun' && (
           <div ref={form} className="space-y-6">

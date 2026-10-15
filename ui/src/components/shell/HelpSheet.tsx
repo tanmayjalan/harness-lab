@@ -35,7 +35,7 @@ const KEYS: [string[], string][] = [
 function jump(e: React.MouseEvent<HTMLAnchorElement>) {
   e.preventDefault()
   const el = document.getElementById(e.currentTarget.getAttribute('href')!.slice(1))
-  el?.scrollIntoView({ block: 'start' })
+  el?.scrollIntoView?.({ block: 'start' })
   // and focus goes there too (the targets take focus, tabIndex -1), so Tab and a screen reader continue from it
   el?.focus({ preventScroll: true })
 }
@@ -51,8 +51,8 @@ export function HelpSheet() {
   // Opened at a place (a glossary term, the quiz): scroll it into view
   useEffect(() => {
     if (!open || !target) return
-    const id = requestAnimationFrame(() => document.getElementById(target)?.scrollIntoView({ block: 'start' }))
-    document.getElementById(target)?.scrollIntoView({ block: 'start' })
+    const id = requestAnimationFrame(() => document.getElementById(target)?.scrollIntoView?.({ block: 'start' }))
+    document.getElementById(target)?.scrollIntoView?.({ block: 'start' })
     return () => cancelAnimationFrame(id)
   }, [open, target])
 
