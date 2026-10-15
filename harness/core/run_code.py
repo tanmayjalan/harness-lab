@@ -80,12 +80,22 @@ SHOW_LIMIT = 20_000      # characters of a script file shown before you allow it
 
 def script_text(path):
     """What a script file says now, so you can read it before you allow it (a script run by path, not code
-    the model wrote). Returns {"text", "cut"} or {"error"}. The file could still change before it runs."""
+    the model wrote). Returns {"text", "cut"} or {"error"}. The file could still change before it runs.
+
+    Only a .py file inside the workspace is opened. Any other path (a file outside the workspace, or one
+    that isn't a script, such as private/.env) is not read: the model could name any file, and its text
+    would be shown and saved with the conversation before you decide. Only the start is read."""
     from harness.core import tools  # here, not at the top: tools.py imports this file
+    if tools.outside_workspace("run_python", {"path": path}):
+        return {"error": "is outside the workspace, so the harness doesn't open it"}  # shown after "The file"
+    target = tools.resolve(path)
+    if target.suffix.lower() != ".py":
+        return {"error": "isn't a .py script, so the harness doesn't open it"}
     try:
-        text = tools.resolve(path).read_text(encoding="utf-8", errors="replace")
+        with open(target, encoding="utf-8", errors="replace") as f:
+            text = f.read(SHOW_LIMIT + 1)
     except OSError as e:
-        return {"error": f"can't be read ({e.strerror or e})"}  # shown after "The file"
+        return {"error": f"can't be read ({e.strerror or e})"}
     return {"text": text[:SHOW_LIMIT], "cut": len(text) > SHOW_LIMIT}
 
 

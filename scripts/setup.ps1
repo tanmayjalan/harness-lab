@@ -10,7 +10,7 @@
 #   2. Claude Code (`claude`): installed, and one small `claude -p` call, made exactly as the mock makes them
 #   3. API keys (ANTHROPIC_API_KEY, DEEPSEEK_API_KEY): only for -Provider anthropic / deepseek; the mock needs none.
 #      A key you type isn't shown, and is saved for your Windows user (where `setx` saves it), never in a file.
-#   4. Node.js (only needed to change the page) and the ports the lab uses (8000, 8765)
+#   4. Node.js (only needed to change the page) and the port the lab uses (8000)
 param(
     [switch]$Check,
     [switch]$Quick
@@ -220,7 +220,7 @@ if ($node -and (Get-Command npm -ErrorAction SilentlyContinue)) {
 } else {
     Add-Result "Node.js" "skipped" "Not found. Only needed to change the page: the built page is in git."
 }
-foreach ($p in @(@{ Port = 8000; What = "the web page" }, @{ Port = 8765; What = "the mock" })) {
+foreach ($p in @(@{ Port = 8000; What = "the web page" })) {  # (the mock runs inside it, on any free port)
     if (Test-Port $p.Port) {
         Add-Result "Port $($p.Port)" "warning" "in use ($($p.What)). Is the lab already running? stop.bat stops it."
     } else {
@@ -245,6 +245,9 @@ if ($haveKey["deepseek"]) { $ways += "  start.bat -Provider deepseek     DeepSee
 if ($ways) {
     Write-Host "Ready. Start the lab with:" -ForegroundColor Green
     $ways | ForEach-Object { Write-Host $_ }
+    if ($Quick -and -not $claudeOk) {
+        Write-Host "(-Quick didn't try claude -p, so the mock isn't proven yet: start.bat checks it, or run setup.bat without -Quick.)" -ForegroundColor Yellow
+    }
 } else {
     Write-Host "No provider is ready yet: get claude -p working (step 2) or add an API key (step 3)." -ForegroundColor Yellow
     exit 1

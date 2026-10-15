@@ -201,6 +201,37 @@ class ScriptShownTests(unittest.TestCase):
         self.assertEqual((len(shown["text"]), shown["cut"]), (run_code.SHOW_LIMIT, True))
         self.assertIn("can't be read", run_code.script_text("no_such_script.py")["error"])
 
+    def test_only_a_py_file_inside_the_workspace_is_opened(self):
+        # The model can name any file; nothing else is read (or shown and saved) before you decide
+        secret = pathlib.Path(tools.WORKSPACE) / "shown.env"
+        secret.write_text("API_KEY=real-looking", encoding="utf-8")
+        self.addCleanup(secret.unlink, missing_ok=True)
+        outside = pathlib.Path(__file__).resolve()  # a real .py file; the test workspace is the temp folder
+        self.assertTrue(tools.outside_workspace("run_python", {"path": str(outside)}))
+        for path, why in (("shown.env", "isn't a .py script"), (str(outside), "outside the workspace")):
+            with self.subTest(path=path):
+                shown = run_code.script_text(path)
+                self.assertEqual(set(shown), {"error"})
+                self.assertIn(why, shown["error"])
+                self.assertNotIn("real-looking", loop.ask_text("run_python", {"path": path}))
+
+    def test_a_file_that_changes_while_you_decide_does_not_run(self):
+        ran = []
+
+        def confirm(question):  # you are shown the file; meanwhile something rewrites it
+            self.script.write_text("print('something else')\n", encoding="utf-8")
+            return "y"
+        block = NS(id="t1", name="run_python", input={"path": "shown_script.py"})
+        result, outcome = loop._run_one(block, lambda name: "ask", confirm, lambda n, a: ran.append(a) or "ran")
+        self.assertEqual(outcome, "error")
+        self.assertIn("changed after it was shown", result["content"])
+        self.assertEqual(ran, [])
+
+    def test_an_unchanged_file_runs_once_allowed(self):
+        block = NS(id="t1", name="run_python", input={"path": "shown_script.py"})
+        _, outcome = loop._run_one(block, lambda name: "ask", lambda q: "y", lambda n, a: "ran")
+        self.assertEqual(outcome, "ran")
+
     def test_the_terminal_question_shows_the_file(self):
         question = loop.ask_text("run_python", {"path": "shown_script.py"})
         self.assertIn("    print('from the file')", question)
