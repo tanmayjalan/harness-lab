@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in the lab doesn't work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The message you sent, the experiment you ran, or the settings you changed.
+      placeholder: |
+        1. Start the lab with start.bat
+        2. Run the experiment "Watch the loop"
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - mock (claude -p)
+        - anthropic
+        - deepseek
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup check
+      description: Paste the summary from `setup.bat -Check` (it never shows more than the last 4 characters of a key).
+      render: text
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Screenshots, the error in the terminal running start.bat, or the call in the Inspector's Raw tab. Remove anything personal first.

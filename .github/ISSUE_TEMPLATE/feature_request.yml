@@ -1,0 +1,16 @@
+name: Idea or new experiment
+description: Suggest something the lab should show or explain
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What should the lab show?
+      description: The harness idea you'd like to see, and why it's worth learning.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How could a learner see it?
+      description: An experiment, a setting, something in the Inspector... Rough ideas are fine.

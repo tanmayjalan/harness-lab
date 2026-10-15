@@ -1,9 +1,9 @@
 # Gets the harness lab ready, and checks that it is: run it once before start.bat, or any time
 # something doesn't work. It can be run again safely; it only changes what's missing.
 #
-#   .\setup.ps1           set up and check everything, and offer to save your API keys
-#   .\setup.ps1 -Check    only report: change nothing, ask nothing
-#   .\setup.ps1 -Quick    skip the checks that call a service (claude -p and the key tests)
+#   .\scripts\setup.ps1           set up and check everything, and offer to save your API keys
+#   .\scripts\setup.ps1 -Check    only report: change nothing, ask nothing
+#   .\scripts\setup.ps1 -Quick    skip the checks that call a service (claude -p and the key tests)
 #
 # What it looks at:
 #   1. Python 3.10+, the lab's own Python environment (.venv) and its packages
@@ -17,8 +17,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-Set-Location $PSScriptRoot
-$python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
+$Root = Split-Path -Parent $PSScriptRoot   # the Harness folder (this script lives in scripts\)
+Set-Location $Root
+$python = Join-Path $Root ".venv\Scripts\python.exe"
 $env:PYTHONIOENCODING = "utf-8"
 # Ask questions only if someone can answer them (not with -Check, nor when run by another program)
 $canAsk = -not $Check -and -not [Console]::IsInputRedirected
