@@ -219,7 +219,10 @@ export type Snapshot = {
 export type Price = { input: number; cached: number; output: number; cache_write?: number; note?: string } | null
 
 export type ProviderInfo = {
-  name: string; label: string; model: string; models?: string[]; missing_key: string | null; price: Price
+  name: string; label: string; model: string | null; models?: string[]; missing_key: string | null; price: Price
+  // A server you run (Ollama, LM Studio, another): its address, whether that is this computer, why it can't be
+  // used now (not running, no models, no address), and the models that can't use tools
+  local?: boolean; address?: string | null; this_computer?: boolean; problem?: string | null; no_tools?: string[]
   thinking?: 'adaptive' | 'budget' // how this provider takes thinking
   model_prices?: Record<string, NonNullable<Price>> | null // the mock: prices per model it imitates
   context_windows?: Record<string, number> | null // the most each model can take in on one call (tokens)

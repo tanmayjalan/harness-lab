@@ -4,6 +4,7 @@ Run:   start.bat   (or, from the Harness folder:)
        .venv\Scripts\python -m harness.web.server                        mock: real replies from `claude -p`
        .venv\Scripts\python -m harness.web.server --provider deepseek    DeepSeek (needs DEEPSEEK_API_KEY)
        .venv\Scripts\python -m harness.web.server --provider anthropic   the Anthropic API (needs ANTHROPIC_API_KEY)
+       .venv\Scripts\python -m harness.web.server --provider ollama      a model in Ollama (also lmstudio, custom)
 Open:  http://127.0.0.1:8000
 
 The page polls GET /events for what the harness is doing. Everything is held
@@ -25,7 +26,7 @@ from harness.web import compare
 from harness.web import conversations
 from harness import evals
 from harness.web.jsonify import to_json
-from harness.core import local_only, loop, run_code, tools
+from harness.core import local_models, local_only, loop, run_code, tools
 from harness.features import hooks
 from harness.features import lab_settings
 from harness.features import skills
@@ -609,13 +610,7 @@ class Handler(BaseHTTPRequestHandler):
                 "provider": self.session.provider,
                 "mode": self.session.mode,
                 "model": self.session.model,
-                "providers": [
-                    {"name": n, "label": p["label"], "model": p["model"], "missing_key": providers.missing_key(n),
-                     "price": p.get("price"), "models": providers.models(n),
-                     "thinking": providers.thinking_style(n), "model_prices": p.get("model_prices"),
-                     "context_windows": p.get("context_windows"), "source": p.get("source")}
-                    for n, p in providers.PROVIDERS.items()
-                ],
+                "providers": [provider_info(n) for n in providers.PROVIDERS],
                 "folder": str(tools.WORKSPACE),
                 "frontend": {"built": (STATIC / "index.html").is_file(), "folder": str(STATIC)},
                 "max_turns": self.session.max_turns,
@@ -680,12 +675,14 @@ class Handler(BaseHTTPRequestHandler):
             name = body.get("name")
             if name not in providers.PROVIDERS:
                 return self.send_json(400, {"error": f"unknown provider {name!r}"})
+            if providers.is_local(name) and providers.unavailable(name):  # not running, no models, no address
+                return self.send_json(400, {"error": providers.unavailable(name)})
             try:
                 client = self.server.clients.get(name)
             except providers.MissingKey as e:
                 return self.send_json(400, {"error": str(e)})
             p = providers.PROVIDERS[name]
-            model = body.get("model") or p["model"]
+            model = body.get("model") or providers.default_model(name)
             if model not in providers.models(name):
                 return self.send_json(400, {"error": f"{p['label']} has no model {model!r}"})
             if not self.session.switch(name, client, p["label"], model):
@@ -708,6 +705,18 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self.send_json(400, {"error": str(e)})
             return self.send_settings()
+        if self.path == "/local-server":  # a local server's address (Ollama, LM Studio, another): save it, then look
+            name = body.get("name")
+            if not providers.is_local(name):
+                return self.send_json(400, {"error": f"{name!r} isn't a local server"})
+            if body.get("url") is not None:
+                try:
+                    local_models.save(name, str(body["url"]))
+                except ValueError as e:
+                    return self.send_json(400, {"error": str(e)})
+                self.server.clients.forget(name)  # the next call goes to the new address
+            local_models.forget()  # Check again: ask the server afresh
+            return self.send_json(200, provider_info(name))
         if self.path == "/settings/reset":
             lab_settings.reset(self.session.settings_path)
             return self.send_settings()
@@ -820,7 +829,9 @@ class Handler(BaseHTTPRequestHandler):
         """Everything one side of a comparison needs: the saved settings with this side's changes on top."""
         name = spec["provider"]
         p = providers.PROVIDERS[name]
-        model = spec.get("model") or p["model"]
+        if providers.is_local(name) and providers.unavailable(name):  # not running, no models, no address
+            raise ValueError(f"{p['label']}: {providers.unavailable(name)}")
+        model = spec.get("model") or providers.default_model(name)
         if model not in providers.models(name):
             raise ValueError(f"{p['label']} has no model {model!r}")
         saved = lab_settings.load(self.session.settings_path)
@@ -845,7 +856,9 @@ class Handler(BaseHTTPRequestHandler):
         name = body.get("provider")
         if name not in providers.PROVIDERS:
             return self.send_json(400, {"error": f"unknown provider {name!r}"})
-        model = body.get("model") or providers.PROVIDERS[name]["model"]
+        if providers.is_local(name) and providers.unavailable(name):
+            return self.send_json(400, {"error": f"{providers.PROVIDERS[name]['label']}: {providers.unavailable(name)}"})
+        model = body.get("model") or providers.default_model(name)
         repeat = body.get("repeat", 1)
         if model not in providers.models(name) or not isinstance(repeat, int) or not 1 <= repeat <= 5:
             return self.send_json(400, {"error": "Pick a model from the provider's list and 1 to 5 runs per question."})
@@ -1087,6 +1100,22 @@ def make_server(session, port, clients=None):
     return server
 
 
+def provider_info(name):
+    """One provider as the page sees it (GET /info): what it costs, its models, and whether it can be used now."""
+    p = providers.PROVIDERS[name]
+    info = {"name": name, "label": p["label"], "model": p["model"], "missing_key": providers.missing_key(name),
+            "price": p.get("price"), "models": providers.models(name),
+            "thinking": providers.thinking_style(name), "model_prices": p.get("model_prices"),
+            "context_windows": p.get("context_windows"), "source": p.get("source")}
+    if providers.is_local(name):  # a server you run: where it is, and why it can't be used (if it can't)
+        status = providers.local_status(name)
+        address = providers.address_of(name)
+        info.update({"local": True, "model": providers.default_model(name), "address": address,
+                     "this_computer": local_models.is_this_computer(address), "problem": status["problem"],
+                     "no_tools": status["no_tools"]})
+    return info
+
+
 def start_mock():
     """Run mock_server in this process on a free port; return a client that uses it (with its key)."""
     mock, key = mock_server.serve()
@@ -1106,6 +1135,11 @@ class Clients:
                 self.made[name] = start_mock() if name == "mock" else providers.make_client(name)
             return self.made[name]
 
+    def forget(self, name):
+        """Make the client again next time (a local server's address changed)."""
+        with self.lock:
+            self.made.pop(name, None)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Web page for the harness")
@@ -1117,13 +1151,18 @@ def main():
 
     os.chdir(paths.ROOT)  # (file tools use the workspace folder whatever the current folder is)
     clients = Clients()
+    if providers.is_local(name) and providers.unavailable(name):
+        # Start anyway, with the mock: once the server is running, pick it in Settings → Model
+        print(f"{providers.PROVIDERS[name]['label']}: {providers.unavailable(name)}\n"
+              f"Starting with the mock instead; pick {providers.PROVIDERS[name]['label']} in Settings → Model when it's ready.")
+        name = "mock"
     p = providers.PROVIDERS[name]
     mcp = mcp_client.load()  # tools from the servers in mcp_servers.json
     if mcp.tools:
         print(f"MCP: {len(mcp.tools)} tools from {', '.join(sorted(set(mcp.sources.values())))}")
     for problem in mcp.problems:
         print(f"MCP: skipped {problem}")
-    session = Session(clients.get(name), p["label"], model=p["model"], provider=name, mcp=mcp)
+    session = Session(clients.get(name), p["label"], model=providers.default_model(name), provider=name, mcp=mcp)
 
     conversations.purge_deleted(days=7)  # deleted ones stay a week (Undo, or a rescue by hand), then go
     try:  # then the copies of files that no conversation (deleted ones included) needs any more

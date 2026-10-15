@@ -235,6 +235,9 @@ type Prefs = {
   setAlwaysDetails: (on: boolean) => void
   answerQuiz: (id: string, option: number | null) => void
   resetExplained: () => void
+  // F449: back to a first-time learner's view in one go: explanations seen, experiment ticks, quiz answers,
+  // the "inspect" hint and any experiment Undo still waiting (put the experiment's change back first)
+  startOver: () => void
   setFontSize: (f: FontSize) => void
   setTheme: (t: Theme) => void
   toggleSidebar: () => void
@@ -273,6 +276,7 @@ export const usePrefs = create<Prefs>()(
       }),
       markExperimentDone: (id) => set((s) => (s.experimentsDone.includes(id) ? s : { experimentsDone: [...s.experimentsDone, id] })),
       resetExplained: () => set({ explained: [] }),
+      startOver: () => set({ explained: [], experimentsDone: [], quizAnswers: {}, inspectHintSeen: false, experimentBefore: null }),
       setExperimentBefore: (experimentBefore) => set({ experimentBefore }),
       resetExperimentsDone: () => set({ experimentsDone: [] }),
       sawInspectHint: () => set({ inspectHintSeen: true }),

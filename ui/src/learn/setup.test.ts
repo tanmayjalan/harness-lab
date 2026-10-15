@@ -38,7 +38,7 @@ describe('Put it back, in a conversation that keeps its start', () => {
     usePrefs.setState({ experimentBefore: { settings: { descriptions: { get_weather: '' } }, changes: ['get_weather description changed'] } as never })
     await putBack()
     const t = useUi.getState().toasts.at(-1)!
-    expect(t.title).toBe('Back as it was')
+    expect(t.title).toBe('Settings restored')
     expect(t.body).toMatch(/This conversation keeps the experiment's prompt and tool descriptions: start a new conversation to use yours/)
     useSession.setState({ frozen: false })
     vi.restoreAllMocks()

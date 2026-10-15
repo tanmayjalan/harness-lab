@@ -2,7 +2,7 @@
 import * as Tabs from '@radix-ui/react-tabs'
 import { ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Copy, Download, PanelRightClose, Radio, Scissors } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { RequestEvent } from '../../api/types'
+import type { RequestEvent, Settings } from '../../api/types'
 import type { Call, RunModel } from '../../model/derive'
 import { callsCsv, conversationReport } from '../../model/report'
 import { sourceNote, windowFor } from '../../model/context'
@@ -410,6 +410,24 @@ function thinkingLabel(r: RequestEvent, thought: boolean) {
   return `on, up to ${count(t.budget_tokens)} tokens`
 }
 
+// F444: a quiet pointer from a tab to the Python function behind it (names, not line numbers, so it stays true)
+function InCode({ children }: { children: ReactNode }) {
+  return <p className="text-xs text-muted">In the code: {children}</p>
+}
+
+// F446: tools whose description you edited in Settings and this call sent (older saves don't record it), and
+// tools whose description you have changed since, while this conversation keeps the start it began with
+function toolEdits(call: Call, settings: Settings | null, keepsStart: boolean) {
+  const edited = new Set(call.request.config?.descriptions ?? [])
+  const waiting = settings && keepsStart && settings.apply === 'conversation'
+    ? (call.request.tools ?? []).filter((t) => {
+      const now = settings.tools.find((s) => s.name === t.name)
+      return !!now && now.description.trim() !== t.description.trim()
+    }).map((t) => t.name)
+    : []
+  return { edited, waiting }
+}
+
 function SentTab({ view }: { view: CallView }) {
   const { call } = view
   const [onlyNew, setOnlyNew] = useState(false)
@@ -417,9 +435,13 @@ function SentTab({ view }: { view: CallView }) {
   // Tools not offered on the previous call (find_tool loaded them): green, as new messages are
   const before = new Set((view.previous?.request.tools ?? []).map((t) => t.name))
   const newTools = view.previous?.request.tools ? (call.request.tools ?? []).map((t) => t.name).filter((n) => !before.has(n)) : []
+  const settings = useServer((s) => s.settings)
+  const keepsStart = useSession((s) => s.frozen)
+  const { edited, waiting } = toolEdits(call, settings, keepsStart)
   return (
     <div className="space-y-5">
       <p className="text-xs text-muted">What the harness sent: the system prompt, the tools offered and the messages list; green is new since the previous call. The Raw tab has the exact request body.</p>
+      <InCode><code>agent()</code> in harness/core/loop.py builds this request and sends it.</InCode>
       <Section title="System prompt" aside={<span className="flex gap-2">
         {call.request.facts > 0 && <ExplainIcon concept="facts" />}<ExplainIcon concept="system_prompt" />
       </span>}>
@@ -438,6 +460,7 @@ function SentTab({ view }: { view: CallView }) {
           summary={<>
             {(call.request.tools ?? []).map((t) => t.name).join(', ') || 'none'}
             {newTools.length > 0 && <span className="text-ok"> · new since {callRef(view.previous!, call)}: {newTools.join(', ')}</span>}
+            {edited.size > 0 && <span className="text-warn"> · your edits: {[...edited].join(', ')}</span>}
           </>}>
           <ul className="divide-y divide-line">
             {(call.request.tools ?? []).map((t) => {
@@ -448,13 +471,23 @@ function SentTab({ view }: { view: CallView }) {
                     <code className="font-semibold">{t.name}</code>
                     {rule && <Badge tone={rule.tone}>{rule.label}</Badge>}
                     {t.source !== 'built in' && <Badge>{t.source}</Badge>}
+                    {edited.has(t.name) && <Badge tone="warn" title="Its description was edited in Settings → Tools">edited</Badge>}
                   </div>
                   <p className="text-xs text-muted">{t.description}</p>
+                  {waiting.includes(t.name) && (
+                    <p className="text-xs text-muted">Your newer edit to this description waits for your next conversation.</p>
+                  )}
                 </li>
               )
             })}
           </ul>
         </Disclosure>
+        {waiting.length > 0 && (
+          <p className="text-xs text-muted">
+            Your edits to {waiting.join(', ')} wait for your next conversation: this one keeps the descriptions it began
+            with (Settings → Model → "From your next conversation").
+          </p>
+        )}
       </Section>
 
       <Section title={`Messages list (${plural(view.messages.length, 'entry', 'entries')})`}
@@ -493,6 +526,7 @@ function ReceivedTab({ call }: { call: Call }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted">What the model sent back, block by block.</p>
+      <InCode><code>agent()</code> in harness/core/loop.py gets this reply and reads <code>stop_reason</code> to decide what happens next.</InCode>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted">stop_reason</span><code className="rounded bg-code px-1">{call.stopReason}</code>
         {u && <span className="text-muted">· usage: {count(u.input_tokens ?? 0)} in, {count(u.cache_read_input_tokens ?? 0)} cached, {count(u.output_tokens ?? 0)} out{(u.cache_creation_input_tokens ?? 0) > 0 && ` · ${count(u.cache_creation_input_tokens ?? 0)} written to cache`}</span>}
@@ -531,7 +565,8 @@ function RawTab({ call }: { call: Call }) {
   </> : "This conversation was saved before the harness kept the exact request, so it can't be shown. The Sent tab shows what was recorded: the system prompt, the tool names and descriptions, and the messages."
   const parts: [string, string, ReactNode, unknown, number, number | null][] = [
     ['api-request', 'Sent to the model', sentHelp, apiRequest, 1, apiRequest ? sentChars(call) : null],
-    ['api-response', 'Came back from the model', 'The API reply: why it stopped, what it wrote or asked for, and how many tokens it used.', apiResponse, 1, null],
+    // The loop records only these three fields of the reply (its "response" event), so this isn't the whole reply
+    ['api-response', 'Came back from the model', <>The parts of the API reply the harness reads: why it stopped (<code>stop_reason</code>), what it wrote or asked for (<code>content</code>) and how many tokens it used (<code>usage</code>).</>, apiResponse, 1, null],
     ['events', "The harness's own record (not sent)", <>The events the harness logged for this call. Fields like <code>seq</code>, <code>time</code>, <code>msg</code>, <code>config</code> and <code>provider</code> are its bookkeeping, for this page: the model never sees them.</>, { request: call.request, response: call.response ?? null }, 0, null],
   ]
   return (
@@ -695,6 +730,10 @@ function ToolsTab({ call, model }: { call: Call; model: RunModel }) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted">How each tool this call touched went: the model asks, the harness decides and runs it here, and the result goes back in the next call.</p>
+      <InCode>
+        <code>_before</code> (checks), <code>_run_one</code> (runs) and <code>_after</code> (your after_tool hook) in harness/core/loop.py;
+        {' '}your hooks file is loaded by harness/features/hooks.py.
+      </InCode>
       <HooksCard model={model} call={call} />
       <RoundTrips model={model} callId={call.id} />
       {!any && <p className="text-sm text-muted">This call asked for no tools and carried no tool results.</p>}

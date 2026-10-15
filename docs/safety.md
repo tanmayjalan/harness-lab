@@ -12,7 +12,12 @@ OK, so the model can't see the code, your saved conversations or your profile wi
 
 `write_file`, `remember_fact`, `run_python` and MCP tools ask first by default (change it in
 **Settings → Tools**). Helpers, Compare, Re-run and evals can't ask you anything, so tools that need approval
-are refused there.
+are refused there, unless you tick **Let Ask-first tools run** in Compare (for one comparison) or use **Re-run
+letting Ask-first tools run**. With `run_python` among them, that runs code the model writes without you
+seeing it first, so the re-run asks you once more.
+
+"Always allow" in the approval panel sets the tool to Allow for good: in every conversation, and in Compare,
+Re-run and evals too. The message that follows has an Undo.
 
 ## Running code is not a sandbox
 
@@ -28,6 +33,10 @@ internet. The harness only:
 - leaves out environment variables whose names look secret (with KEY, TOKEN, SECRET, PASS, CREDENTIAL, AUTH,
   COOKIE or SESSION in them).
 
+That last filter only keeps keys out of casual output, such as a script that prints all its settings. It is
+not a lock: a script can still read a key you saved with `setx`, because Windows keeps those in the registry
+(its settings store, under `HKCU\Environment`), and it can read any key written in one of your files.
+
 A program the script starts and leaves running after it has finished normally keeps running. **Read the code
 before you click Allow.**
 
@@ -39,10 +48,12 @@ The example [`config/my_hooks.py`](../config/my_hooks.py):
 - blocks code that mentions `shutil.rmtree`, `os.remove` or `subprocess`, in code the model wrote or in a
   script file it asks to run (a text check, easy to get around);
 - logs every call to `data/tool_log.txt`;
-- puts an "untrusted content" line in front of what `read_file`, `get_weather` and `run_python` return, so the
-  model treats instructions inside files and web data as text, not orders.
+- puts an "untrusted content" line in front of what `read_file`, `search_files`, `get_weather`, `run_python`
+  and MCP tools (names with `__` in them) return, so the model treats instructions inside files, web data and
+  other programs' replies as text, not orders.
 
-It helps; it isn't a guarantee.
+It helps; it isn't a guarantee. If the hooks file has a mistake (a typo, say), the harness carries on with no
+hooks at all, so none of the above happens; the page then shows a red warning above the message box.
 
 ## Rewind
 
@@ -70,7 +81,10 @@ knows. The lab's own web server already refuses requests addressed to any other 
 ## What leaves your computer
 
 - **Everything the model reads is sent to the provider.** With the mock, that means Anthropic, under your
-  Claude Code login; with DeepSeek, DeepSeek's servers.
+  Claude Code login; with DeepSeek, DeepSeek's servers; with the Anthropic API, Anthropic's API. The provider
+  menu above the message box says this under each provider. With Ollama or LM Studio on this computer, nothing
+  leaves it; with an address on another computer (Settings → Model), everything goes to that computer, and the
+  page says so.
 - **`get_weather` uses the internet:** it sends the city name to open-meteo.com (free, no key) and shows the
   exact web requests in its result. No other built-in tool goes online (a script `run_python` runs can).
 

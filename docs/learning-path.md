@@ -17,6 +17,12 @@ Then use **Compare** (ready-made comparisons) and **Re-run** to see what one cha
 whether a change made things better or worse, and **?** → **Quiz me** to check what stuck. The
 [tour of the page](tour.md) explains each of these.
 
+A few experiments leave something behind, so they don't start the same way a second time: **Write, run, fix**
+fixes the bug in `scripts/totals.py`, **Ask before acting** leaves a new `todo.txt`, **Take it back** adds a
+line to `notes.md` unless you rewind, and **Remember me** saves a fact in Memory. [Running a
+workshop](workshop.md#reset-between-demos) says how to put them back, and has a two-hour path through these
+tiers.
+
 ## Things to try in the workspace
 
 The model's folder, [`workspace/`](../workspace/), has sample files made for these experiments (see its

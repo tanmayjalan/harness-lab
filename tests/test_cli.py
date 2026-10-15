@@ -13,7 +13,7 @@ from anthropic.types import TextBlock, ToolUseBlock
 
 from harness import cli
 from harness.core import loop, tools
-from harness.features import lab_settings
+from harness.features import hooks, lab_settings
 
 
 def answer(text):
@@ -118,6 +118,82 @@ class PrintingTests(unittest.TestCase):
         self.assertIn("cut off: the reply reached the longest-reply limit", result)
 
 
+class HookPrintingTests(unittest.TestCase):
+    """F445 / DEV-6: what your hooks did is said on the tool's own line (still one line per tool)."""
+
+    def run_with(self, my_hooks, *replies):
+        client = Client(*replies)
+        with unittest.mock.patch.object(cli.hooks, "load", lambda *a: my_hooks):
+            return run(client, "go")
+
+    def test_a_hook_block_says_the_hooks_reason(self):
+        my_hooks = hooks.Hooks(before=lambda name, args: "no dice today" if name == "roll_dice" else None)
+        _, lines, printed = self.run_with(my_hooks, call("t1", "roll_dice", sides=6), answer("ok"))
+        tool_lines = [line for line in lines if "roll_dice" in line]
+        self.assertEqual(len(tool_lines), 1)
+        self.assertIn("blocked by your hook", tool_lines[0])
+        self.assertIn("no dice today", tool_lines[0])
+        self.assertEqual(printed, "")
+
+    def test_a_rewrite_by_after_tool_is_said(self):
+        my_hooks = hooks.Hooks(after=lambda name, args, result: "[hidden]")
+        _, lines, _ = self.run_with(my_hooks, call("t1", "roll_dice", sides=6), answer("ok"))
+        self.assertEqual([line for line in lines if "roll_dice" in line],
+                         ["  -> roll_dice({'sides': 6}): ran (your after_tool hook rewrote the result)"])
+
+    def test_a_crashing_hook_is_said(self):
+        def broken(name, args):
+            raise ValueError("oops")
+        _, lines, _ = self.run_with(hooks.Hooks(before=broken), call("t1", "roll_dice", sides=6), answer("ok"))
+        line = next(line for line in lines if "roll_dice" in line)
+        self.assertIn("failed", line)
+        self.assertIn("your before_tool hook crashed: ValueError: oops", line)
+
+    def test_a_hook_that_changes_nothing_adds_nothing(self):
+        my_hooks = hooks.Hooks(before=lambda name, args: None, after=lambda name, args, result: None)
+        _, lines, _ = self.run_with(my_hooks, call("t1", "roll_dice", sides=6), answer("ok"))
+        self.assertEqual([line for line in lines if "roll_dice" in line], ["  -> roll_dice({'sides': 6}): ran"])
+
+
+class FakeMCP:
+    """Stands in for mcp_client.MCPTools: one tool, no servers started."""
+
+    def __init__(self, tools=(), problems=()):
+        self.tools = list(tools)
+        self.problems = list(problems)
+        self.calls = []
+        self.closed = False
+
+    def handles(self, name):
+        return any(t["name"] == name for t in self.tools)
+
+    def call(self, name, args):
+        self.calls.append((name, args))
+        return "SHOUTED"
+
+    def close(self):
+        self.closed = True
+
+
+SHOUT = {"name": "text-tools__shout", "description": "Shout the text.",
+         "input_schema": {"type": "object", "properties": {"text": {"type": "string"}}}}
+
+
+class MCPToolTests(unittest.TestCase):
+    """F445 / DEV-5: the terminal offers the MCP tools the page offers, asks first for them, and runs them there."""
+
+    def test_an_mcp_tool_is_offered_asks_first_and_runs_on_its_server(self):
+        mcp = FakeMCP([SHOUT])
+        client = Client(call("m1", "text-tools__shout", text="hi"), answer("done"))
+        asked = []
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.one_message([{"role": "user", "content": "shout hi"}], client, "mock", "m", settings(), [],
+                            confirm=lambda prompt: asked.append(prompt) or "y", say=lambda line: None, mcp=mcp)
+        self.assertIn("text-tools__shout", [t["name"] for t in client.requests[0]["tools"]])
+        self.assertEqual(len(asked), 1)  # it asked first, as the page does for someone else's program
+        self.assertEqual(mcp.calls, [("text-tools__shout", {"text": "hi"})])
+
+
 class WorkflowTests(unittest.TestCase):
     def test_with_the_workflow_on_each_step_and_the_check_are_said(self):
         client = Client(call("w1", "calculate", expression="2+2"), answer("- 2+2 is 4"), answer("It's 4."),
@@ -131,22 +207,42 @@ class WorkflowTests(unittest.TestCase):
 
 
 class SessionTests(unittest.TestCase):
-    def run_main(self, inputs, facts=()):
+    def run_main(self, inputs, facts=(), argv=("cli", "--provider", "deepseek"), mcp=None):
         out = io.StringIO()
         replies = iter(inputs)
+        self.providers_used = []
+        self.mcp = mcp or FakeMCP()
 
         def fake_input(prompt=""):
             item = next(replies)
             if isinstance(item, BaseException):
                 raise item
             return item
+
+        def fake_client(provider):
+            self.providers_used.append(provider)
+            return Client(answer("hi"))
         with unittest.mock.patch("builtins.input", fake_input), \
-                unittest.mock.patch.object(cli, "make_client", lambda provider: Client(answer("hi"))), \
+                unittest.mock.patch.object(cli, "make_client", fake_client), \
                 unittest.mock.patch.object(cli.memory, "load", lambda *a: list(facts)), \
-                unittest.mock.patch("sys.argv", ["cli", "--provider", "deepseek"]), \
+                unittest.mock.patch.object(cli.mcp_client, "load", lambda *a: self.mcp), \
+                unittest.mock.patch("sys.argv", list(argv)), \
                 contextlib.redirect_stdout(out):
             cli.main()
         return out.getvalue()
+
+    # F445 / DEV-5: with no --provider it uses the mock, as the page does (not the paid API)
+    def test_the_mock_is_the_default(self):
+        self.run_main(["exit"], argv=("cli",))
+        self.assertEqual(self.providers_used, ["mock"])
+
+    # F445 / DEV-5: the banner says how many tools are offered, those from MCP servers too, and the servers stop at the end
+    def test_the_banner_counts_the_tools_offered_and_mcp_is_closed(self):
+        out = self.run_main(["exit"], mcp=FakeMCP([SHOUT], problems=["other: it didn't start"]))
+        expected = len(cli.first_call_tools(lab_settings.load(), [*tools.TOOLS, SHOUT]))
+        self.assertIn(f"offering {expected} tools (1 from MCP servers)", out)
+        self.assertIn("MCP: skipped other: it didn't start", out)
+        self.assertTrue(self.mcp.closed)
 
     # F292: the banner names the lab and counts facts in words
     def test_the_banner_names_the_lab_and_counts_facts(self):

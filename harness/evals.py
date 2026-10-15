@@ -104,7 +104,7 @@ def judge(case, result, provider, clients=None):
     """Ask a second model whether the answer meets the case's criteria. Returns (passed, reason), where
     passed is None when the judge's reply was neither PASS nor FAIL: that run couldn't be judged."""
     reply = providers.with_quiet_retries(client_for(provider, clients)).messages.create(
-        model=providers.PROVIDERS[provider]["model"], max_tokens=300, system=JUDGE_PROMPT,
+        model=providers.default_model(provider), max_tokens=300, system=JUDGE_PROMPT,
         messages=[{"role": "user", "content": f"Question: {case['question']}\n\nCriteria: {case['judge']}\n\n"
                                               f"Answer:\n{result.get('answer') or '(no answer)'}"}])
     line = "".join(b.text for b in reply.content if b.type == "text").strip()
@@ -118,7 +118,7 @@ def side_for(provider, model=None, use_my_settings=False, settings_path=None, cl
     """How every question of a round is run: compare.setup, as for a side of a comparison. With your settings,
     all of them apply and your hooks run; with the defaults, neither. (The web page passes its own `side`, with
     its MCP tools; this one is for the command line, which has only the built-in tools.)"""
-    model = model or providers.PROVIDERS[provider]["model"]
+    model = model or providers.default_model(provider)
     settings = lab_settings.load(settings_path) if use_my_settings else lab_settings.empty()
     settings = lab_settings.clean(settings, loop.SYSTEM, tools.TOOLS, loop.default_permission)
     return compare.setup(provider, model, settings, client=client_for(provider, clients), use_hooks=use_my_settings)
@@ -210,7 +210,7 @@ def run_suite(provider, cases, model=None, repeat=1, use_my_settings=False, judg
     """Every case `repeat` times. Returns per-question pass rates, reasons and figures, plus the setup.
     Stopped part-way (`cancel` set), it returns what finished, marked `incomplete`. `side`: how each question
     runs (compare.setup), with `settings_changed` its settings in words; by default side_for's."""
-    model = model or providers.PROVIDERS[provider]["model"]
+    model = model or providers.default_model(provider)
     if side is None:
         side = side_for(provider, model, use_my_settings, settings_path, clients)
         settings = lab_settings.load(settings_path) if use_my_settings else lab_settings.empty()
@@ -256,7 +256,7 @@ def run_suite(provider, cases, model=None, repeat=1, use_my_settings=False, judg
         # every setting, the questions' fingerprint and the judge's instructions
         "config": side.get("config"), "questions_hash": questions_hash(cases), "checks_version": CHECKS_VERSION,
         "judge_prompt": JUDGE_PROMPT if judge_with else None,
-        "judge_model": providers.PROVIDERS[judge_with]["model"] if judge_with else None,
+        "judge_model": providers.default_model(judge_with) if judge_with else None,
         "passed": sum(r["passed"] for r in rows), "total": sum(r["runs"] for r in rows), "cases": rows,
         "unjudged": sum(r["unjudged"] for r in rows),
         "estimated": provider == "mock", "only": only or "",
@@ -335,7 +335,7 @@ def report(provider, cases, results, model=None, repeat=1):
     and each question shows its pass rate (e.g. 2/3)."""
     if repeat > 1:
         return report_rates(provider, cases, results, model, repeat)
-    label = f"{providers.PROVIDERS[provider]['label']} ({model or providers.PROVIDERS[provider]['model']})"
+    label = f"{providers.PROVIDERS[provider]['label']} ({model or providers.default_model(provider)})"
     print(f"\n{label}")
     print("-" * len(label))
     passed = scored = 0
@@ -387,7 +387,7 @@ def judge_is_tested(judge_with, provider, model):
     own answers. Goes by model, as the page does, whichever provider runs it."""
     if not judge_with:
         return False
-    return (model or providers.PROVIDERS[provider]["model"]) == providers.PROVIDERS[judge_with]["model"]
+    return (model or providers.default_model(provider)) == providers.default_model(judge_with)
 
 
 def failures(case, result):
@@ -411,7 +411,7 @@ def judge_word(result):
 
 
 def report_rates(provider, cases, results, model, repeat):
-    label = f"{providers.PROVIDERS[provider]['label']} ({model or providers.PROVIDERS[provider]['model']}), {repeat} runs each"
+    label = f"{providers.PROVIDERS[provider]['label']} ({model or providers.default_model(provider)}), {repeat} runs each"
     print(f"\n{label}")
     print("-" * len(label))
     total = runs_scored = left_out = 0
@@ -469,9 +469,13 @@ def main():
     print(f"{plural(len(cases), 'question')}; {'your edited settings' if args.use_my_settings else 'default settings'}; "
           f"judge: {judge_with or 'none'}; facts about you left out; tools that need approval blocked.")
     for provider in args.provider:
+        problem = providers.is_local(provider) and providers.unavailable(provider)
+        if problem:  # a local server that isn't running (or has no models): say so and go on to the next
+            print(f"  ({providers.PROVIDERS[provider]['label']}: {problem})")
+            continue
         model = args.model if args.model in providers.models(provider) else None
         if args.model and not model:
-            print(f"  ({provider} has no model {args.model!r}; using {providers.PROVIDERS[provider]['model']})")
+            print(f"  ({provider} has no model {args.model!r}; using {providers.default_model(provider)})")
         if judge_is_tested(judge_with, provider, model):
             print("  (the judge is the same model as the one being tested: it may go easy on its own answers)")
         started = time.time()

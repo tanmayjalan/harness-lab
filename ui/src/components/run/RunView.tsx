@@ -205,8 +205,9 @@ export function RunView({ composerRef, onRerun, onRewind }:
       </div>
       {/* F429: at 200% zoom the guess, the hints and the box could leave the chat a sliver: this area takes at most
           a little over half the height and scrolls itself beyond that. "Jump to latest" takes its own line at the top of
-          this area, so it never sits on top of the conversation's text */}
-      <div className="relative flex max-h-[55%] shrink-0 flex-col px-4 pt-2 pb-3">
+          this area, so it never sits on top of the conversation's text. On a short window (640 x 360) it takes at most
+          40%, the hints above the box fold to one line each, and the chat keeps more than half the window */}
+      <div className="relative flex max-h-[55%] shrink-0 flex-col px-4 pt-2 pb-3 short:max-h-[40%] short:pt-1 short:pb-1.5">
         {!atBottom && !empty && (
           <div className="flex shrink-0 justify-center pb-1.5">
           <Button size="sm" data-testid="jump-latest" className="rounded-full shadow-sm"
@@ -221,11 +222,14 @@ export function RunView({ composerRef, onRerun, onRewind }:
           </Button>
           </div>
         )}
-        <div className="mx-auto min-h-0 w-full max-w-3xl overflow-y-auto px-1 py-0.5">
-          {!pending && <><ExperimentChanges /><ExperimentNow model={model} /></>}
-          {pending && <ApprovalDock key={pending.id} approval={pending} row={pendingRow} />}
+        {/* the hints (or the approval) scroll in their own part, so the message box under them always stays in sight */}
+        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col px-1 py-0.5">
+          <div className="-mx-1 -mt-0.5 min-h-0 overflow-y-auto px-1 pt-0.5">
+            {!pending && <><ExperimentChanges /><ExperimentNow model={model} /></>}
+            {pending && <ApprovalDock key={pending.id} approval={pending} row={pendingRow} />}
+          </div>
           {/* kept mounted under the approval so a half-typed message survives */}
-          <div hidden={!!pending}><Composer ref={composerRef} /></div>
+          <div hidden={!!pending} className="shrink-0"><Composer ref={composerRef} /></div>
         </div>
       </div>
     </div>

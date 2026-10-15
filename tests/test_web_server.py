@@ -330,6 +330,9 @@ class FakeClients:
             raise web_server.providers.MissingKey(f"{name} needs a key")
         return RecordingClient(f"from {name}")
 
+    def forget(self, name):
+        self.forgotten = name
+
 
 class HttpTests(unittest.TestCase):
     def setUp(self):
@@ -427,7 +430,51 @@ class HttpTests(unittest.TestCase):
     def test_info_lists_providers_and_the_current_one(self):
         info = json.loads(self.call("GET", "/info")[1])
         self.assertEqual(info["provider"], "mock")
-        self.assertEqual([p["name"] for p in info["providers"]], ["anthropic", "deepseek", "mock"])
+        self.assertEqual([p["name"] for p in info["providers"]], ["anthropic", "deepseek", "mock", "ollama", "lmstudio", "custom"])
+
+    def test_a_local_server_that_isnt_running_is_listed_with_the_reason(self):
+        # (isolate.py lets no test reach a real Ollama: as if it weren't running)
+        ollama = next(p for p in json.loads(self.call("GET", "/info")[1])["providers"] if p["name"] == "ollama")
+        self.assertTrue(ollama["local"] and ollama["this_computer"])
+        self.assertEqual((ollama["address"], ollama["models"], ollama["model"]), ("http://127.0.0.1:11434", [], None))
+        self.assertIn("Start Ollama", ollama["problem"])
+        status, data = self.call("POST", "/provider", {"name": "ollama"})
+        self.assertEqual(status, 400)
+        self.assertIn("Start Ollama", json.loads(data)["error"])
+        self.assertEqual(self.session.provider, "mock")  # unchanged
+
+    def test_a_local_servers_address_is_checked_and_saved(self):
+        from harness.core import local_models
+        try:
+            status, data = self.call("POST", "/local-server", {"name": "custom", "url": "ftp://nope"})
+            self.assertEqual(status, 400)
+            self.assertIn("isn't a web address", json.loads(data)["error"])
+            status, data = self.call("POST", "/local-server", {"name": "custom", "url": "192.168.1.20:8080/v1"})
+            self.assertEqual(status, 200)
+            saved = json.loads(data)
+            self.assertEqual(saved["address"], "http://192.168.1.20:8080")
+            self.assertFalse(saved["this_computer"])
+            self.assertEqual(self.server.clients.forgotten, "custom")  # the next call goes to the new address
+            self.assertEqual(local_models.load(), {"custom": "http://192.168.1.20:8080"})
+            self.assertEqual(self.call("POST", "/local-server", {"name": "mock", "url": "http://x"})[0], 400)
+            self.assertEqual(self.call("POST", "/local-server", {"name": "ollama"})[0], 200)  # Check again
+        finally:
+            local_models.PATH.unlink(missing_ok=True)
+
+    def test_a_running_local_server_can_be_picked_with_its_models(self):
+        from harness.core import local_models
+        from test_local_models import FakeServer
+        with FakeServer(models=("qwen3:4b", "openai/gpt-oss-20b"), no_tools=()) as fake:
+            try:
+                local_models.save("lmstudio", fake.url)
+                lm = next(p for p in json.loads(self.call("GET", "/info")[1])["providers"] if p["name"] == "lmstudio")
+                self.assertEqual((lm["models"], lm["problem"]), (["qwen3:4b", "openai/gpt-oss-20b"], None))
+                status, data = self.call("POST", "/provider", {"name": "lmstudio", "model": "openai/gpt-oss-20b"})
+                self.assertEqual(status, 200, data)
+                self.assertEqual((self.session.provider, self.session.model), ("lmstudio", "openai/gpt-oss-20b"))
+                self.assertEqual(self.call("POST", "/provider", {"name": "lmstudio", "model": "gpt-9"})[0], 400)
+            finally:
+                local_models.PATH.unlink(missing_ok=True)
 
     def test_switching_provider_over_http(self):
         status, data = self.call("POST", "/provider", {"name": "deepseek"})

@@ -43,3 +43,16 @@ def _offline(url):
 
 
 toy_tools.fetch_json = _offline
+
+# Nor a model server you may be running (Ollama, LM Studio): local providers find none, unless a test serves
+# its own (tests/test_local_models.py puts real_ask back, with a fake server of its own)
+from harness.core import local_models  # noqa: E402
+local_models.PATH = TMP / "local_servers.json"
+local_models.real_ask = local_models._ask
+
+
+def _no_local_servers(url, key, body=None):
+    raise OSError(f"tests don't use local model servers (asked for {url})")
+
+
+local_models._ask = _no_local_servers

@@ -47,7 +47,7 @@ describe('a retried call', () => {
   it('the call line says it was tried again, and the first one explains retries', () => {
     render(<RTooltip.Provider><Timeline model={model()} inspectedCallId={null} live="" running={false} /></RTooltip.Provider>)
     expect(document.body.textContent).toMatch(/tried again ×1/)
-    expect(document.body.textContent).toMatch(/trying again when the service is busy/)
+    expect(document.body.textContent).toMatch(/trying again when the provider is busy/)
   })
 
   it('the time spent waiting to try again is its own part, not the model\'s time', () => {
@@ -85,7 +85,7 @@ describe('the practice switch', () => {
     const change = { faults: { busy: true } }
     expect(previousOf(change, settings)).toEqual({ faults: { busy: false } })
     expect(onlyChanges(change, on)).toBeNull()
-    expect(describeChange(change, settings)).toEqual(['practice: a busy service'])
+    expect(describeChange(change, settings)).toEqual(['practice: a busy provider'])
   })
 })
 

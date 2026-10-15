@@ -85,7 +85,7 @@ export function describeChange(change: SettingsChange, s: Settings): string[] {
   if (change.trim) out.push(change.trim.enabled ? `trimming on, keeping the last ${change.trim.keep_last}` : 'trimming off')
   if (change.compact) out.push(change.compact.enabled ? 'summarising on' : 'summarising off')
   if (change.apply) out.push(change.apply === 'conversation' ? 'changes apply from your next conversation' : 'changes apply from your next message')
-  if (change.faults) out.push(change.faults.busy ? 'practice: a busy service' : 'practice switch off')
+  if (change.faults) out.push(change.faults.busy ? 'practice: a busy provider' : 'practice switch off')
   if (change.tools_at_once) out.push(change.tools_at_once.enabled ? 'tools run at once' : 'tools run one by one')
   if (change.workflow) out.push(change.workflow.enabled ? 'workflow on' : 'workflow off')
   if (change.run_code) out.push(change.run_code.enabled ? 'run code on' : 'run code off')
@@ -147,7 +147,7 @@ export async function setUpExperiment(x: Experiment, undone?: string[]) {
   }
   const first = undone?.length ? `First put back what the last experiment changed (${undone.join(', ')}). ` : ''
   if (!before.changes.length) {
-    if (first) toast({ kind: 'info', title: 'Back as it was', body: first.trim() })
+    if (first) toast({ kind: 'info', title: 'Settings restored', body: first.trim() })
     return
   }
   const prefs = usePrefs.getState()
@@ -172,10 +172,10 @@ export async function putBack(opts?: { quiet?: boolean }): Promise<boolean> {
     if (before.provider && !(await switchProvider(before.provider.provider, before.provider.model))) return false
     usePrefs.getState().setExperimentBefore(null)
     if (opts?.quiet) return true
-    // A conversation that keeps its start keeps the experiment's prompt and descriptions, whatever Undo does
+    // A conversation that keeps its fixed beginning keeps the experiment's prompt and descriptions, whatever Undo does
     const kept = !!before.settings && (before.settings.system !== undefined || before.settings.descriptions !== undefined)
       && useSession.getState().frozen && useServer.getState().settings?.apply === 'conversation'
-    toast({ kind: 'ok', title: 'Back as it was', body: before.changes.join(', ') + ': undone.'
+    toast({ kind: 'ok', title: 'Settings restored', body: before.changes.join(', ') + ': undone.'
       + (kept ? " This conversation keeps the experiment's prompt and tool descriptions: start a new conversation to use yours." : '') })
     return true
   } catch (err) {
