@@ -21,8 +21,8 @@ PROVIDERS = {
         "price": {"input": 4.00, "cached": 0.20, "cache_write": 5.00, "output": 20.00,
                   "note": "Claude Opus 5.5 list price"},
         # Where the prices and context windows above come from, and when they were last checked (shown on the page)
-        "source": {"prices": "Anthropic's model list (platform.claude.com/docs/en/about-claude/pricing)",
-                   "windows": "platform.claude.com/docs/en/models/overview", "checked": "2026-10-15"},
+        "source": {"prices": "Anthropic's price list, platform.claude.com/docs/en/about-claude/pricing",
+                   "windows": "Anthropic's model list, platform.claude.com/docs/en/models/overview", "checked": "2026-10-15"},
         # The most a model can take in on one call, in tokens (platform.claude.com/docs/en/models/overview,
         # checked 2026-10-04). Below 512 tokens (4,096 on Haiku 4.5) a prompt isn't cached at all.
         "context_windows": {"claude-opus-5-5": 1_000_000},
@@ -37,7 +37,7 @@ PROVIDERS = {
         "context_windows": {"deepseek-flash": 1_000_000},
         "price": {"input": 0.30, "cached": 0.006, "output": 1.20,
                   "note": "DeepSeek peak price, checked 2026-10-03; off-peak is half"},
-        "source": {"prices": "api-docs.deepseek.com (peak price; off-peak is half)",
+        "source": {"prices": "DeepSeek's price list, api-docs.deepseek.com: the peak price; off-peak is half",
                    "windows": "third-party model directories, not DeepSeek itself", "checked": "2026-10-03"},
     },
     "mock": {
@@ -58,9 +58,9 @@ PROVIDERS = {
             "claude-sonnet-5-5": {"input": 2.00, "cached": 0.20, "cache_write": 2.50, "output": 10.00},
             "claude-haiku-4-5-20251001": {"input": 1.00, "cached": 0.10, "cache_write": 1.25, "output": 5.00},
         },
-        "source": {"prices": "Anthropic's model list (platform.claude.com/docs/en/about-claude/pricing), as if "
-                             "the real model had answered",
-                   "windows": "platform.claude.com/docs/en/models/overview", "checked": "2026-10-15"},
+        "source": {"prices": "Anthropic's price list, platform.claude.com/docs/en/about-claude/pricing, as if the "
+                             "real model had answered",
+                   "windows": "Anthropic's model list, platform.claude.com/docs/en/models/overview", "checked": "2026-10-15"},
     },
 }
 
