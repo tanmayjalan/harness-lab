@@ -109,7 +109,7 @@ export const PRESETS: Preset[] = [
 type CompareState = {
   text: string
   includeProfile: boolean
-  allowAsk: boolean // let tools set to Ask first run (nobody can be asked during a comparison)
+  allowAsk: boolean // let tools set to Ask first run (nobody can be asked during a comparison); unticked after each run
   repeat: number // runs per side (1, 3 or 5): models vary, so one run can mislead
   sides: SideSpec[]
   lookFor: string
@@ -274,7 +274,8 @@ export const useCompare = create<CompareState>((set, get) => ({
       toast({ kind: 'error', title: "Couldn't run the comparison", body: errorMessage(err) })
     } finally {
       clearInterval(poll)
-      set({ busy: null, progress: null, startedAt: null })
+      // F389: letting Ask-first tools run (code you haven't seen, for run_python) is for one comparison only
+      set({ busy: null, progress: null, startedAt: null, allowAsk: false })
     }
   },
 

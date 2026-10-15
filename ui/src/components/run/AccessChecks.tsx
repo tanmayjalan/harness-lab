@@ -6,7 +6,7 @@ import { Ban, Check, CircleSlash, Hand, Minus } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { HookName, HooksLoaded, Rule } from '../../api/types'
 import { hookOf, type HookRecord, type ToolRow } from '../../model/derive'
-import { RULES } from '../../model/permission'
+import { isMcpTool, RULES } from '../../model/permission'
 import { cn } from '../../lib/cn'
 
 type Verdict = 'pass' | 'stop' | 'skip' | 'wait'
@@ -26,6 +26,14 @@ function Check_({ n, title, verdict, children }: { n: number; title: string; ver
       </span>
     </li>
   )
+}
+
+// F396: where a tool that ran did its work. Some ran here but went online: say so, not "on this computer"
+export function ranWhere(name: string): string {
+  if (name === 'get_weather') return 'it ran here; it sent a request to the internet (open-meteo.com)'
+  if (name === 'run_python') return 'it ran here, as you; the code may have reached the internet'
+  if (isMcpTool(name)) return 'another program (its MCP server) ran it; it may have reached the internet'
+  return 'it ran here, on this computer'
 }
 
 export function took(ms: number) {
@@ -106,8 +114,8 @@ export function AccessChecks({ row, setting, loaded }: { row: ToolRow; setting?:
         <Check_ n={5} title="The harness runs the tool"
           verdict={ran ? (s === 'error' && after?.verdict !== 'failed' ? 'stop' : 'pass') : s === 'running' && !beforeFailed ? 'wait' : 'skip'}>
           {beforeFailed ? 'never ran: your before_tool crashed first.'
-            : s === 'ran' ? 'it ran here, on this computer.'
-              : s === 'error' && after?.verdict === 'failed' ? 'it ran here, on this computer; then your after_tool crashed (check 6).'
+            : s === 'ran' ? `${ranWhere(row.name)}.`
+              : s === 'error' && after?.verdict === 'failed' ? `${ranWhere(row.name)}; then your after_tool crashed (check 6).`
                 : s === 'error' ? 'it ran but failed; the error goes back to the model (is_error: true).'
                   : s === 'running' ? 'running now…'
                     : s === 'not_run' ? (row.result?.content.startsWith('Not run: the reply was cut off')
@@ -126,8 +134,8 @@ export function AccessChecks({ row, setting, loaded }: { row: ToolRow; setting?:
       </ol>
       <p className="flex items-start gap-1 text-xs text-muted">
         <CircleSlash className="mt-0.5 size-3.5 shrink-0" />
-        The model never runs anything: it can only ask. Every tool is offered to it (even blocked ones), and whatever
-        happens here, it gets a result back for its request.
+        The model never runs anything: it can only ask. Every tool this call offered goes to the model (even blocked
+        ones), and whatever happens here, it gets a result back for its request.
       </p>
     </div>
   )

@@ -4,16 +4,21 @@
 #   .\scripts\start.ps1                       mock: real replies from `claude -p`, no API key
 #   .\scripts\start.ps1 -Provider deepseek    DeepSeek (needs DEEPSEEK_API_KEY)
 #   .\scripts\start.ps1 -Provider anthropic   the Anthropic API (needs ANTHROPIC_API_KEY)
+#   .\scripts\start.ps1 -Provider ollama      a model in Ollama, on its usual address (also lmstudio, custom;
+#                                             change the address in Settings → Model). Not running: starts with the mock
 #   .\scripts\start.ps1 -Real                 same as -Provider anthropic
 #   .\scripts\start.ps1 -NoBrowser            don't open the browser
 #   .\scripts\start.ps1 -NoBuild              don't rebuild the page, even if ui\ changed
 #   .\scripts\start.ps1 -NoCheck              don't check claude -p first (the mock only)
+#   .\scripts\start.ps1 -Fresh                a throwaway copy: no saved Memory, settings or conversations, and
+#                                             nothing it does reaches data\, config\ or workspace\ (for workshops)
 param(
-    [ValidateSet("mock", "anthropic", "deepseek")][string]$Provider = "mock",
+    [ValidateSet("mock", "anthropic", "deepseek", "ollama", "lmstudio", "custom")][string]$Provider = "mock",
     [switch]$Real,
     [switch]$NoBrowser,
     [switch]$NoBuild,
-    [switch]$NoCheck
+    [switch]$NoCheck,
+    [switch]$Fresh
 )
 if ($Real) { $Provider = "anthropic" }
 
@@ -78,14 +83,30 @@ if ($Provider -eq "mock" -and -not $NoCheck) {
 }
 
 # Keys saved with setx only reach windows opened afterwards; read them directly so this one works too
-foreach ($name in "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY") {
+foreach ($name in "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "LOCAL_API_KEY") {
     if (-not [Environment]::GetEnvironmentVariable($name)) {
         $saved = [Environment]::GetEnvironmentVariable($name, "User")
         if ($saved) { [Environment]::SetEnvironmentVariable($name, $saved) }
     }
 }
 
-$web = Start-Process $python -ArgumentList "-m", "harness.web.server", "--provider", $Provider -NoNewWindow -PassThru
+# -Fresh: the same page from a throwaway copy (harness\web\sandbox.py). It starts with no saved data and copies
+# workspace\ and config\ as they are now, so restore the sample files first if an experiment changed them
+if ($Fresh) {
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        # (a copy downloaded as a ZIP isn't a git folder: then there's nothing to compare with, and no warning)
+        $changed = try { git status --porcelain -- workspace 2>$null } catch { $null }
+        if ($LASTEXITCODE -eq 0 -and $changed) {
+            Write-Host "Some sample files in workspace\ have changed, and the fresh copy will start with them:" -ForegroundColor Yellow
+            Write-Host ($changed | Out-String).TrimEnd()
+            Write-Host "To start from the sample files instead: press Ctrl+C, run  git checkout -- workspace , delete any new files listed (??), then start again." -ForegroundColor Yellow
+        }
+    }
+    $module = "-m", "harness.web.sandbox", "--empty", "--port", "8000"
+} else {
+    $module = "-m", "harness.web.server"
+}
+$web = Start-Process $python -ArgumentList ($module + "--provider", $Provider) -NoNewWindow -PassThru
 
 try {
     # Wait up to 20 seconds for the web page to answer (it also starts the MCP servers)
@@ -98,6 +119,10 @@ try {
     Write-Host ""
     Write-Host "Harness lab is running. Ctrl+C here (or stop.bat) stops it." -ForegroundColor Green
     Write-Host "  Web page:  http://127.0.0.1:8000   (using: $Provider)"
+    if ($Fresh) {
+        Write-Host "  A throwaway copy: nothing you do here reaches data\, config\ or workspace\."
+        Write-Host "  Progress kept by the browser (ticks, explanations seen, quiz) stays: Settings -> Display -> Start over as a new learner."
+    }
     Write-Host "  Terminal version, in another window:  .venv\Scripts\python -m harness.cli --provider mock"
     Write-Host ""
     if (-not $NoBrowser) { Start-Process "http://127.0.0.1:8000" }

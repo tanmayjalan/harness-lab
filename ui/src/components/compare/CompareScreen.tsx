@@ -7,13 +7,13 @@ import { downloadJson } from '../../lib/download'
 import { undoToast } from '../../lib/undoToast'
 import { approx, cost as costText, dollars, ESTIMATE_TITLE, plural, seconds, shortArgs, timeAgo, tokens, tokensOut } from '../../lib/format'
 import { configDiff, thinkingWords } from '../../model/configDiff'
-import { RULES } from '../../model/permission'
+import { isMcpTool, RULES } from '../../model/permission'
 import { PRESETS, useCompare, type SideSpec } from '../../store/compare'
 import { openConversation, switchProvider } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { toast, useUi } from '../../store/ui'
-import { paidNote, providerName } from '../composer/providerWords'
+import { modelsOf, paidNote, providerName, toolsTag, unusable } from '../composer/providerWords'
 import { ExplainIcon } from '../../learn/Explain'
 import { Markdown } from '../Markdown'
 import { Badge, Button, Callout, Chip, Disclosure, Field, IconButton, RunningBanner, SectionLabel, Select, Spinner, Stat, TextArea } from '../ui'
@@ -267,9 +267,9 @@ function SideConfig({ index, side, onRemove }: { index: number; side: SideSpec; 
             c.setSide(index, { provider, model: rest.join('/') })
           }}
           className="w-full">
-          {info?.providers.flatMap((p) => (p.models ?? [p.model]).map((m) => (
-            <option key={`${p.name}/${m}`} value={`${p.name}/${m}`} disabled={!!p.missing_key}>
-              {providerName(info.providers, p.name)} · {m}{p.missing_key ? ` (needs ${p.missing_key})` : ''}
+          {info?.providers.flatMap((p) => modelsOf(p).map((m) => (
+            <option key={`${p.name}/${m}`} value={`${p.name}/${m}`} disabled={!!unusable(p)}>
+              {providerName(info.providers, p.name)} · {m}{toolsTag(p, m)}{p.missing_key ? ` (needs ${p.missing_key})` : p.problem ? ' (not ready)' : ''}
             </option>
           )))}
         </Select>
@@ -377,6 +377,8 @@ function Results({ previous, onChange }: { previous: boolean; onChange: () => vo
   const askFirst = refused.filter((n) => ruleNow(n) === 'ask')
   const blockNow = refused.filter((n) => ruleNow(n) === 'block')
   const allowedBefore = askFirst.filter((n) => base.approved?.includes(n))
+  // F389: the re-run lets through every tool set to Ask first that it offers, not only the ones refused last time
+  const letThroughNow = rerun ? (sides[1]?.config?.tools ?? []).filter((t) => t.permission === 'ask').map((t) => t.name) : []
   const anyBlocked = sides.some((s) => s.tools.some((t) => t.blocked))
   const unrecorded = sides.some((s) => !s.config)
   const both = (xs: string[]) => xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0]
@@ -427,12 +429,8 @@ function Results({ previous, onChange }: { previous: boolean; onChange: () => vo
             {both(askFirst)} {askFirst.length === 1 ? 'is' : 'are'} set to Ask first, and nobody can be asked during a re-run, so{' '}
             {askFirst.length === 1 ? 'it was' : 'they were'} blocked
             {allowedBefore.length > 0 && ` (you allowed ${both(allowedBefore)} in the saved run)`}.
-            <span className="mt-1 flex flex-wrap items-center gap-2">
-              <Button size="sm" onClick={() => useCompare.getState().rerun(results.conversation, results.seq, results.text, true)}>
-                Re-run letting Ask-first tools run
-              </Button>
-              <span className="text-xs">Writes really happen; paths outside the workspace are still refused.</span>
-            </span>
+            <RerunLettingThrough tools={letThroughNow.length ? letThroughNow : askFirst}
+              run={() => useCompare.getState().rerun(results.conversation, results.seq, results.text, true)} />
           </Callout>
         )}
         {blockNow.length > 0 && (
@@ -677,11 +675,61 @@ function AskFirstNote() {
         {[...sameSides].map(([sides, tools], i) => `${i ? 'set' : 'Set'} to Ask first ${sides}: ${names(tools)}`).join('; ')}. Nobody can be asked
         during a comparison, so {asking.length === 1 ? 'it is' : 'they are'} {c.allowAsk ? 'let through' : 'blocked'} there.
       </p>
-      <label className="flex items-center gap-2 text-fg">
-        <input type="checkbox" checked={c.allowAsk} onChange={(e) => c.setAllowAsk(e.target.checked)} />
-        Let Ask-first tools run for this comparison (writes really happen; paths outside the workspace are still refused)
+      {/* F389: names what it lets through, and what that means; unticked again after each comparison */}
+      <label className="flex items-start gap-2 text-fg">
+        <input type="checkbox" className="mt-1" checked={c.allowAsk} onChange={(e) => c.setAllowAsk(e.target.checked)} />
+        <span>
+          Let Ask-first tools run for this comparison: {andList(asking)}
+          {letThroughWords(asking, (where.get('run_python')?.length ?? 0) * c.repeat).map((w) => (
+            <span key={w} className={cn('block text-xs', w.startsWith('Code the model writes') ? 'font-medium text-warn' : 'text-muted')}>{w}</span>
+          ))}
+          <span className="block text-xs text-muted">It is unticked again after the comparison runs.</span>
+        </span>
       </label>
     </Callout>
+  )
+}
+
+const andList = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0] ?? '')
+const FILE_TOOLS = ['read_file', 'list_files', 'write_file']
+
+// F389: what letting Ask-first tools run means, tool by tool. `codeRuns`: how many runs can use run_python
+// (the sides where it asks, times the runs per side); one run can run code more than once
+export function letThroughWords(tools: string[], codeRuns: number): string[] {
+  const out: string[] = []
+  if (tools.includes('run_python')) {
+    out.push(`Code the model writes will run as you, without you seeing it first, ${codeRuns > 1 ? `in up to ${plural(codeRuns, 'run')}` : 'in one run'}`
+      + ' (and more than once in a run, if the model asks again). It can reach any of your files and the internet.')
+  }
+  if (tools.includes('remember_fact')) out.push('remember_fact: facts the model saves about you are shared in every future conversation.')
+  const mcp = tools.filter(isMcpTool)
+  if (mcp.length) out.push(`${andList(mcp)}: another program decides what ${mcp.length === 1 ? 'it does' : 'they do'}.`)
+  const files = tools.filter((t) => FILE_TOOLS.includes(t))
+  if (files.length) out.push(`${andList(files)}: writes really happen; paths outside the workspace are still refused.`)
+  return out
+}
+
+// F389: the re-run that lets Ask-first tools through names them, and asks once more when that means
+// running code you haven't seen
+function RerunLettingThrough({ tools, run }: { tools: string[]; run: () => void }) {
+  const [confirming, setConfirming] = useState(false)
+  const code = tools.includes('run_python')
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-2">
+      {confirming ? (
+        <>
+          <span className="text-xs font-medium">Let the model's code run without you seeing it first?</span>
+          <Button size="sm" variant="danger" onClick={() => { setConfirming(false); run() }}>Yes, re-run and let it run</Button>
+          {/* (the button you pressed is gone: focus lands on the safe choice) */}
+          <Button size="sm" variant="ghost" autoFocus onClick={() => setConfirming(false)}>Cancel</Button>
+        </>
+      ) : (
+        <Button size="sm" onClick={() => (code ? setConfirming(true) : run())}>
+          Re-run letting Ask-first tools run: {andList(tools)}
+        </Button>
+      )}
+      {letThroughWords(tools, 1).map((w) => <span key={w} className="basis-full text-xs">{w}</span>)}
+    </span>
   )
 }
 

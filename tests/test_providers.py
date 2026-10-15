@@ -106,8 +106,9 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(providers.thinking_style("mock"), "budget")
 
     def test_every_provider_names_a_model(self):
+        # (a server you run has whatever models you put on it: they're found when needed, test_local_models.py)
         for name, p in providers.PROVIDERS.items():
-            self.assertTrue(p["model"], name)
+            self.assertTrue(p["model"] or providers.is_local(name), name)
 
 
 class RecordingClient:

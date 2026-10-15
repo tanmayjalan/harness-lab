@@ -9,6 +9,12 @@ export function windowFor(info: Info | null | undefined, provider: string | null
   return (model && p?.context_windows?.[model]) || null
 }
 
+// The window of the model one recorded call was sent to (null when the server doesn't know it)
+export function callWindow(info: Info | null | undefined,
+  call: { request: { model?: string | null; config?: { provider?: string | null } | null } } | null | undefined) {
+  return windowFor(info, call?.request.config?.provider, call?.request.model)
+}
+
 // Where a provider's prices (or window sizes) come from, in words: "Anthropic's model list, checked 2026-10-15"
 export function sourceNote(info: Info | null | undefined, provider: string | null | undefined, what: 'prices' | 'windows') {
   const s = info?.providers.find((x) => x.name === provider)?.source

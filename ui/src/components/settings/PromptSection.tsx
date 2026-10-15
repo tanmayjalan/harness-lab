@@ -22,6 +22,8 @@ export function PromptSection({ settings }: { settings: Settings }) {
         {edited ? <><Changed /> Edited</> : <span className="text-muted">The default</span>}
         <span id="prompt-count" className="text-muted">· {count(text.length)} characters</span>
       </div>
+      {/* F444: where the default lives in the code */}
+      <p className="mb-2 text-xs text-muted">In the code: the default is <code>SYSTEM</code> in harness/core/loop.py.</p>
       {/* F342: the count and the warning are the box's description; a blank prompt marks it invalid */}
       <TextArea value={text} onChange={(e) => setText(e.target.value)} aria-label="System prompt" spellCheck={false}
         aria-invalid={blank || undefined} aria-describedby={blank ? 'prompt-count prompt-blank' : 'prompt-count'}

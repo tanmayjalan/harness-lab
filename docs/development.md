@@ -6,10 +6,11 @@ Run these from the Harness folder:
 
 | Command | What it does |
 |---|---|
-| `.venv\Scripts\python -m harness.cli --provider mock` | the terminal version |
+| `.venv\Scripts\python -m harness.cli` | the terminal version, on the mock as the page is (`--provider deepseek` or `--provider anthropic` for a paid service). It uses your page settings and the same tools, MCP ones included; it always uses the provider's default model, and "From your next conversation" doesn't apply |
 | `.venv\Scripts\python -m harness.evals --provider mock` | the 16 eval questions, judged by the mock |
 | `.venv\Scripts\python -m harness.evals --provider mock --only weather` | just some of them |
 | `.venv\Scripts\python -m harness.evals --provider mock --repeat 3` | each question 3 times: pass rates |
+| `.venv\Scripts\python -m harness.evals --provider ollama --judge mock` | the questions on a model in Ollama (also `lmstudio`, `custom`), judged by the mock |
 | `.venv\Scripts\python -m harness.web.sandbox` | the page on a throwaway copy of your data (port 8100) |
 | `.venv\Scripts\python -m harness.web.sandbox --empty` | the same, starting with no saved data at all |
 

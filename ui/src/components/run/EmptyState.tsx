@@ -171,7 +171,7 @@ export function EmptyState({ disabled }: { disabled: boolean }) {
         </p>
         {provider === 'mock' && (
           <p className="mx-auto max-w-xl text-sm text-muted">
-            You're on the mock (Claude Code's <code>claude -p</code>): free, but each model call takes 20 to 60 s.
+            You're on the mock (Claude Code's <code>claude -p</code>): free, but each model call takes about 5 to 30 s.
           </p>
         )}
       </div>
@@ -190,7 +190,7 @@ export function EmptyState({ disabled }: { disabled: boolean }) {
   )
 }
 
-// After a few experiments, the quiz checks what stuck
+// After a few experiments, the quiz checks what you remember
 function QuizLink() {
   const done = usePrefs((s) => s.experimentsDone.length)
   if (done < 3) return null
@@ -199,7 +199,7 @@ function QuizLink() {
       {done} experiments done.{' '}
       <button type="button" className="text-accent hover:underline" onClick={() => useUi.getState().setHelp(true, 'quiz')}>
         Quiz me ({QUIZ.length} questions)
-      </button>{' '}to check what stuck.
+      </button>{' '}to check what you remember.
     </p>
   )
 }

@@ -9,6 +9,8 @@ import re
 
 import anthropic
 
+from harness.core import local_models
+
 PROVIDERS = {
     "anthropic": {
         "label": "Anthropic API",
@@ -62,12 +64,97 @@ PROVIDERS = {
                              "as if the real model had answered",
                    "windows": "Anthropic's model list, platform.claude.com/docs/en/models/overview", "checked": "2026-10-15"},
     },
+    # Models on a server you run (local_models.py). Each takes Anthropic-format requests at /v1/messages
+    # (Ollama: docs.ollama.com/api/anthropic-compatibility; LM Studio 0.4.1 and later:
+    # lmstudio.ai/docs/developer/anthropic-compat). The models are whatever the server has; you change the
+    # address in Settings → Model (saved in data/local_servers.json). LOCAL_API_KEY, if set, is sent as the key.
+    "ollama": {
+        "label": "Ollama",
+        "local": True,
+        "base_url": "http://127.0.0.1:11434",
+        "key_env": None,
+        "model": None,  # the first model the server lists (providers.default_model)
+        "thinking": "budget",  # accepted, but Ollama doesn't hold the model to the budget
+        "price": None,
+        "start_hint": "Start Ollama (open the app, or run ollama serve in a terminal).",
+        "models_hint": "Get one with ollama pull, for example ollama pull qwen3:4b.",
+        "source": {"prices": "none: the model runs on a machine you control",
+                   "windows": "the server's own settings for each model", "checked": "2026-10-15"},
+    },
+    "lmstudio": {
+        "label": "LM Studio",
+        "local": True,
+        "base_url": "http://127.0.0.1:1234",
+        "key_env": None,
+        "model": None,
+        "thinking": "budget",
+        "price": None,
+        "start_hint": "In LM Studio, open the Developer tab and start the server.",
+        "models_hint": "Download one in LM Studio (the Discover tab).",
+        "source": {"prices": "none: the model runs on a machine you control",
+                   "windows": "the server's own settings for each model", "checked": "2026-10-15"},
+    },
+    "custom": {
+        "label": "Other server",
+        "local": True,
+        "base_url": None,  # you enter it
+        "key_env": None,
+        "model": None,
+        "thinking": "budget",
+        "price": None,
+        "start_hint": "Is the server running?",
+        "models_hint": "",
+        "source": {"prices": "none: the model runs on a machine you control",
+                   "windows": "the server's own settings for each model", "checked": "2026-10-15"},
+    },
 }
+
+LOCAL_KEY = "LOCAL_API_KEY"  # optional: for a local server that asks for a key (Ollama ignores it)
+
+
+def is_local(name):
+    """True for a server you run yourself (Ollama, LM Studio, another)."""
+    return bool(PROVIDERS.get(name, {}).get("local"))
+
+
+def address_of(name):
+    """The address the provider is reached at: the one you saved (local servers), else its own."""
+    p = PROVIDERS[name]
+    if is_local(name):
+        return local_models.load().get(name) or p["base_url"]
+    return p["base_url"]
+
+
+def local_status(name):
+    """What a local server has: {"models", "no_tools", "problem"} (see local_models.discover)."""
+    p = PROVIDERS[name]
+    return local_models.discover(address_of(name), key=get_key(LOCAL_KEY), ollama=name == "ollama",
+                                 start_hint=p.get("start_hint", ""), models_hint=p.get("models_hint", ""))
+
+
+def default_model(name):
+    """The model used when none is picked: the provider's own, or the first one a local server lists."""
+    p = PROVIDERS[name]
+    if p.get("model"):
+        return p["model"]
+    found = models(name)
+    return found[0] if found else None
+
+
+def unavailable(name):
+    """None if the provider can be used now, otherwise why not, in plain words."""
+    if is_local(name):
+        return local_status(name)["problem"]
+    key = missing_key(name)
+    return f"{PROVIDERS[name]['label']} needs {key} set." if key else None
 
 
 def models(name):
-    """The models you can pick for a provider: its own list, or just its one model."""
+    """The models you can pick for a provider: its own list, or just its one model, or (a local server)
+    the models it has now."""
     p = PROVIDERS[name]
+    if is_local(name):
+        return list(local_status(name)["models"])
     return list(p.get("models") or [p["model"]])
 
 
@@ -103,7 +190,8 @@ def cost(name, usage, model=None):
 
 
 class MissingKey(SystemExit):
-    """The provider's key isn't set. A SystemExit, so command-line scripts just print the message."""
+    """The provider can't be used yet (its key isn't set, or a local server has no address).
+    A SystemExit, so command-line scripts just print the message."""
 
 
 def get_key(env_name):
@@ -136,6 +224,13 @@ def make_client(name, base_url=None, api_key=None):
     """An SDK client for the named provider. Raises MissingKey with instructions if its key is missing.
     `api_key` overrides the key (the mock's own random key, from mock_server.serve)."""
     p = PROVIDERS[name]
+    if is_local(name):
+        # No network here (the server is asked for its models elsewhere): only the address and the key
+        address = base_url or address_of(name)
+        if not address:  # without one the SDK would quietly use Anthropic's own address
+            raise MissingKey(f"{p['label']} has no address yet. Enter it in Settings → Model.")
+        key = api_key or get_key(LOCAL_KEY) or "local"  # Ollama and LM Studio accept any key unless told not to
+        return anthropic.Anthropic(api_key=key, base_url=address, max_retries=0)
     if missing_key(name):
         raise MissingKey(
             f"{p['label']} needs {p['key_env']} set. In PowerShell run:\n"
@@ -169,22 +264,34 @@ def plain_error(text):
     if "for this mock server" in t:  # the mock refused the request itself: its key didn't match (MOCK_KEY)
         return ("The mock refused the request: the key didn't match. If you started the mock yourself, set "
                 "MOCK_KEY to the key it printed; the lab's own mock needs nothing.")
+    # A model on your own server (Ollama, LM Studio) that can't do what the harness asks
+    if "does not support tools" in t or "does not support tool" in t:
+        return ("This model can't use tools, and the harness offers tools with every message. "
+                "Pick another model, or get one that can (on ollama.com/search, filter by Tools).")
+    if "does not support thinking" in t:
+        return "This model can't think step by step. Turn thinking off (Settings → Model), or pick another model."
+    if "try pulling it first" in t:
+        return "The server doesn't have that model. Get it first (ollama pull <name>), then try again."
+    if "404 page not found" in t or "unexpected endpoint" in t:
+        return ("The server doesn't take Anthropic-format requests at /v1/messages. Check the address; "
+                "if it's Ollama or LM Studio, update it (LM Studio needs 0.4.1 or later).")
     if "authentication" in t or "invalid api key" in t or "invalid x-api-key" in t or "error code: 401" in t:
         return ("The provider rejected the API key. Check ANTHROPIC_API_KEY or DEEPSEEK_API_KEY "
-                "(setx NAME \"key\" in PowerShell), then try again.")
+                "(or LOCAL_API_KEY for your own server; setx NAME \"key\" in PowerShell), then try again.")
     if "error code: 429" in t or "rate limit" in t:
-        return "The provider says too many requests. Wait a minute and try again."
+        return "The provider says there were too many requests. Wait a minute and try again."
     limit = re.search(r"hit max_turns \((\d+)\)", text)
     if limit:  # the loop's own limit (Settings → Model → limits), not a provider problem
         return f"Stopped after {limit.group(1)} model calls: the most allowed for one message."
     if "error code: 529" in t or "overloaded" in t:
-        return "The service is overloaded right now. The harness tried again; wait a minute and send it again."
+        return "The provider is overloaded right now. The harness tried again; wait a minute and send it again."
     if "error code: 503" in t or "service unavailable" in t:
-        return "The service is unavailable right now. Wait a minute and try again."
+        return "The provider is unavailable right now. Wait a minute and try again."
     if "apitimeouterror" in t or "timed out" in t:
-        return "The service took too long to answer. Try again; a shorter request may help."
+        return "The provider took too long to answer. Try again; a shorter message may help."
     if "connection refused" in t or "connecterror" in t or "apiconnectionerror" in t:
-        return "Could not reach the model's server. With the mock, restart start.bat; otherwise check your internet."
+        return ("Could not reach the provider. With the mock, restart start.bat; with Ollama or LM Studio, "
+                "check that it is running; otherwise check your internet.")
     return None
 
 

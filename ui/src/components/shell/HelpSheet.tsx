@@ -18,14 +18,14 @@ const CTRL = MAC ? '⌘' : 'Ctrl'
 const KEYS: [string[], string][] = [
   [['Enter'], 'send the message'],
   [['Shift', 'Enter'], 'new line'],
-  [['Esc'], 'stop the running message (not while the harness waits for your Allow or Decline: answer that first)'],
+  [['Esc'], 'stop the running message (while the harness waits for you to allow or decline, answer that first)'],
   [['A'], 'allow, when the harness is waiting for you'],
   [['D'], 'decline, when the harness is waiting for you'],
   [['['], 'previous model call in the Inspector'],
   [[']'], 'next model call in the Inspector'],
-  [['Alt', '←'], 'previous or next call (Alt+→), for keyboards where [ ] need AltGr'],
+  [['Alt', '←'], 'previous call (Alt+→ for the next one), for keyboards where [ and ] need AltGr'],
   [['←', '→'], 'move between calls in the size chart, once a bar has focus'],
-  [['/'], 'jump to the message box (to Allow, when the harness is waiting for you)'],
+  [['/'], 'jump to the message box, or to the approval panel when the harness is waiting for you'],
   [[CTRL, ','], MAC ? 'open or close Settings (if your browser takes ⌘, for its own settings, use the gear)' : 'open or close Settings'],
   [['?'], 'this help'],
 ]
@@ -36,7 +36,7 @@ function jump(e: React.MouseEvent<HTMLAnchorElement>) {
   e.preventDefault()
   const el = document.getElementById(e.currentTarget.getAttribute('href')!.slice(1))
   el?.scrollIntoView({ block: 'start' })
-  // and focus goes there too (the targets take focus, tabIndex -1), so Tab and a screen reader carry on from it
+  // and focus goes there too (the targets take focus, tabIndex -1), so Tab and a screen reader continue from it
   el?.focus({ preventScroll: true })
 }
 
@@ -78,7 +78,7 @@ export function HelpSheet() {
               <h3 className="text-sm font-semibold">The page at a glance</h3>
               <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted">
                 <li><b className="text-fg">Left:</b> your saved conversations.</li>
-                <li><b className="text-fg">Middle:</b> the conversation. Each "Call" line is one trip to the model; tool rows show what it asked for and what the harness did.</li>
+                <li><b className="text-fg">Middle:</b> the conversation. Each "Call" line is one model call; tool rows show what it asked for and what the harness did.</li>
                 <li><b className="text-fg">Right:</b> the Inspector, a look inside one model call (what was sent, what came back, how big it was).</li>
                 <li><b className="text-fg">Compare</b> runs one question with two or three setups side by side; <b className="text-fg">Evals</b> scores a setup on fixed questions.</li>
                 <li>The status next to the screens says what the harness is doing: Ready, Waiting for the model, Running tools, Waiting for you, Stopping, Summarising history, and Comparing or Evaluating while those screens run.</li>
@@ -115,8 +115,8 @@ export function HelpSheet() {
             <section className="scroll-mt-4 space-y-2 outline-none" id="mock-limits" tabIndex={-1}>
               <h3 className="text-sm font-semibold">What the mock can and can't show</h3>
               <p className="text-sm text-muted">
-                The mock answers through claude -p on your Claude Code plan: no API key, no cost. That makes it a
-                stand-in, not the real API:
+                The mock answers through claude -p on your Claude Code plan: no API key, no cost. It imitates a
+                real provider, so it is not the real API:
               </p>
               <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted">
                 <li>Token counts and costs are <b>estimates</b> (about 4 characters per token, priced as the chosen model).
@@ -128,7 +128,7 @@ export function HelpSheet() {
                 <li>Thinking turns on and off, but its text isn't returned: you only see that it thought.</li>
                 <li>No streaming: the reply arrives all at once.</li>
                 <li>The longest-reply limit is imitated: a reply longer than "Longest reply" (by the estimate) is cut and stops with max_tokens.</li>
-                <li>Each call starts claude -p afresh and doesn't stream, so 20 to 60 seconds per call is normal.</li>
+                <li>Each call starts a new claude -p and doesn't stream, so about 5 to 30 seconds per call is normal.</li>
               </ul>
               <p className="text-sm text-muted">Switch to the Anthropic API or DeepSeek (Settings → Model) to see real numbers.</p>
             </section>
@@ -187,7 +187,7 @@ function Glossary() {
   )
 }
 
-// A few questions to check the ideas stuck, grouped by the experiment after which each makes sense;
+// A few questions to check what you remember, grouped by the experiment after which each makes sense;
 // your answers stay in this browser
 function Quiz() {
   const answers = usePrefs((s) => s.quizAnswers)

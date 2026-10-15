@@ -1,7 +1,7 @@
 // Typed calls to the Python server. Every POST sends JSON: the server refuses anything else
 // (a browser won't send JSON across sites without asking first, which keeps other pages out).
 import type {
-  CompareResult, CompareStatus, EvalQuestion, Conversations, PastComparison, SavedComparison, EvalResult, EvalRun, EvalStatus, Fact, Info, Profile, RerunResult, SavedConversation, Settings, SettingsChange, Snapshot,
+  CompareResult, CompareStatus, EvalQuestion, Conversations, PastComparison, SavedComparison, EvalResult, EvalRun, EvalStatus, Fact, Info, Profile, ProviderInfo, RerunResult, SavedConversation, Settings, SettingsChange, Snapshot,
   RewindPreview, RewindResult,
 } from './types'
 
@@ -13,8 +13,8 @@ export class ApiError extends Error {
 
 // What to say when the server gives no words of its own
 function plainStatus(status: number): string {
-  if (status === 404) return "The server doesn't know that address. Is the page older than the server? Reload it."
-  if (status >= 500) return 'The server hit an error. Look at the terminal window running start.bat.'
+  if (status === 404) return "The server doesn't know that address. The page is out of date. Reload it."
+  if (status >= 500) return 'The server had an error. Look at the terminal window running start.bat.'
   return `The server refused the request (${status}).`
 }
 
@@ -47,6 +47,8 @@ export const api = {
   stop: () => post<{ ok: boolean }>('/stop'),
   approve: (id: string, allowed: boolean, always = false) => post<{ ok: boolean }>('/approve', { id, allowed, always }),
   switchProvider: (name: string, model?: string) => post<{ mode: string; model: string }>('/provider', { name, model }),
+  // A local server's address (url) saved, or (no url) asked again for its models
+  localServer: (name: string, url?: string) => post<ProviderInfo>('/local-server', url === undefined ? { name } : { name, url }),
   newConversation: () => post<{ ok: boolean }>('/reset'),
   saveProfile: (facts: Fact[]) => post<Profile>('/profile', { facts }),
   saveSettings: (change: SettingsChange) => post<Settings>('/settings', change),

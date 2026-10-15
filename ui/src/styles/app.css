@@ -82,6 +82,9 @@
   }
 }
 
+/* F429: a short window (200% zoom on a laptop is about 640 x 360): the area under the chat folds its hints */
+@custom-variant short (@media (max-height: 500px));
+
 @theme inline {
   --color-bg: var(--bg);
   --color-panel: var(--panel);

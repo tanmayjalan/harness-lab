@@ -61,3 +61,18 @@ export const approx = (value: string, estimated: boolean | undefined) => (estima
 export const tokensOut = (n: number, estimated: boolean | undefined) => (estimated ? `≈ ${tokens(n)} or more` : tokens(n))
 // Every cost is worked out from list prices, so always about; on the mock it also leaves thinking out
 export const cost = (n: number, estimated: boolean | undefined) => `≈ ${dollars(n)}${estimated ? ' or more' : ''}`
+
+// F397: a file's place from the lab folder on ("config/my_hooks.py", "data/settings.json"): the full path
+// only adds noise, and your Windows user name, in a shared screenshot. `workspace`: the workspace folder
+// (from /info), whose parent is the lab folder. Without it, the path from the last config/ or data/ on.
+// A path outside the lab folder is left as it is: where it really is matters there
+export function shortPath(file: string | null | undefined, workspace?: string | null): string {
+  if (!file) return ''  // no file known (yet): nothing to show
+  const f = file.replace(/\\/g, '/')
+  if (workspace) {
+    const lab = workspace.replace(/\\/g, '/').replace(/\/+$/, '').replace(/\/[^/]*$/, '')
+    return lab && f.toLowerCase().startsWith(`${lab.toLowerCase()}/`) ? f.slice(lab.length + 1) : file
+  }
+  const m = f.match(/^.*\/((?:config|data)\/[^/].*)$/)
+  return m ? m[1] : file
+}

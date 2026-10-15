@@ -2,8 +2,8 @@
 // moment: a one-line header at the top; the guess and "where to look" just above the message box
 // (before you send and while it runs); and what it showed, right under the answer.
 import { Callout, chipClass, IconButton, RadioRow } from '../ui'
-import { ArrowRight, FlaskConical, Lightbulb, Undo2, X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { ArrowRight, ChevronRight, FlaskConical, Lightbulb, Undo2, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { cannotShow, experimentDone, findExperiment, nextExperiment, type Experiment } from '../../learn/experiments'
 import { newConversation } from '../../store/selectors'
 import { putBack } from '../../learn/setup'
@@ -85,7 +85,7 @@ export function ExperimentNow({ model }: { model: RunModel }) {
   }, [asking, x?.id])
   if (!x || finishedRun(run)) return null
   return (
-    <Callout tone="info" className="mb-2 space-y-1.5">
+    <Callout tone="info" className="mb-2 space-y-1.5 short:py-1.5">
       {asking && x.predict && (
         <div data-testid="experiment-guess" className="space-y-1">
           <p className="font-medium">Before you send, guess: {x.predict.question}</p>
@@ -104,7 +104,10 @@ export function ExperimentNow({ model }: { model: RunModel }) {
         </div>
       )}
       {run && guess && <p className="text-xs text-muted">Your guess: <b>{guess}</b></p>}
-      <p><span className="font-medium">Look at:</span> {x.lookAt}</p>
+      {/* F429: on a short window, a one-line button that opens it */}
+      <Fold label="Where to look" testId="experiment-lookat-fold">
+        {(id, open) => <p id={id} className={cn(!open && 'short:hidden')}><span className="font-medium">Look at:</span> {x.lookAt}</p>}
+      </Fold>
     </Callout>
   )
 }
@@ -208,9 +211,13 @@ export function ExperimentChanges() {
   const running = useSession((s) => s.running)
   if (!before) return null
   return (
-    <Callout tone="warn" size="sm" data-testid="experiment-changes" className="mb-2 flex items-center gap-2">
+    <Callout tone="warn" size="sm" data-testid="experiment-changes" className="mb-2 flex items-center gap-2 short:mb-1.5 short:flex-wrap">
       <FlaskConical className="size-3.5 shrink-0 text-warn" aria-hidden />
-      <span className="min-w-0 flex-1">Experiment changed: {before.changes.join(', ')}</span>
+      {/* F429: on a short window, one line whose button opens the list */}
+      <Fold testId="experiment-changes-fold" className="min-w-0 flex-1"
+        label={`Experiment changed ${before.changes.length} ${before.changes.length === 1 ? 'setting' : 'settings'}`}>
+        {(id, open) => <span id={id} className={cn('min-w-0 flex-1', !open && 'short:hidden')}>Experiment changed: {before.changes.join(', ')}</span>}
+      </Fold>
       <span className="flex shrink-0 flex-col items-end gap-0.5">
         <button type="button" onClick={() => void putBack()} disabled={running}
           title={running ? 'Available when the current reply finishes' : 'Put back what the experiment changed'}
@@ -221,5 +228,24 @@ export function ExperimentChanges() {
         {running && <span className="text-2xs text-muted">Available when the reply finishes</span>}
       </span>
     </Callout>
+  )
+}
+
+// F429: on a short window (200% zoom), a line of hint folds behind a button that opens it; on a tall one the
+// button is not there and the text shows as before. Only CSS decides which (the `short:` rule in app.css), so
+// nothing moves or re-renders when the window changes height; the button names what it opens and says whether it is open
+function Fold({ label, testId, className, children }:
+  { label: string; testId: string; className?: string; children: (id: string, open: boolean) => React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const id = useId()
+  return (
+    <>
+      <button type="button" data-testid={testId} aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}
+        className={cn('hidden items-center gap-1 rounded text-left font-medium focus-ring hover:underline short:inline-flex', open ? '' : className)}>
+        <ChevronRight className={cn('size-3.5 shrink-0 transition-transform motion-reduce:transition-none', open && 'rotate-90')} aria-hidden />
+        {label}
+      </button>
+      {children(id, open)}
+    </>
   )
 }

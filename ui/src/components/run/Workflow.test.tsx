@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import * as RTooltip from '@radix-ui/react-tooltip'
 import type { HarnessEvent, RunConfig, Settings } from '../../api/types'
 import { api } from '../../api/client'
@@ -105,6 +105,23 @@ describe('the diagram', () => {
     expect(svg.getAttribute('aria-label')).toMatch(/outer chain .* inner loop/)
     expect(svg.textContent).toMatch(/Outer chain/)
     expect(svg.textContent).toMatch(/Inner loop/)
+  })
+
+  // VIZ-2: the words are page text over the drawing (as in the loop diagram), so they keep the page's size
+  it('its words are HTML text, not SVG text', () => {
+    const { container } = render(<WorkflowDiagram className="max-h-60" />)
+    expect(container.querySelectorAll('svg text')).toHaveLength(0)
+    const img = screen.getByRole('img')
+    for (const words of ['1. Gather facts', '2. Write', '3. Check', 'Fix', 'Answer']) {
+      const el = within(img).getByText(words)
+      expect(el.tagName).toBe('DIV')
+      expect(el.className).toContain('text-[length:min(0.75rem,2.8cqi)]') // 12 px unless the boxes are too small
+    }
+    for (const words of ['read-only tools', 'PASS', 'check again']) {
+      expect(within(img).getByText(words).className).toContain('text-[length:min(0.6875rem,2.4cqi)]')
+    }
+    expect(within(img).getByText('then the last draft').parentElement!.className).toContain('text-[length:min(0.6875rem,2.4cqi)]')
+    expect((container.firstChild as HTMLElement).className).not.toMatch(/max-h-60/) // its height follows its width
   })
 })
 

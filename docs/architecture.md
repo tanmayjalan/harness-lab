@@ -3,7 +3,9 @@
 A harness is the program around a model. The model can only write text, so the harness sends it the
 conversation and a list of tools, runs the tools it asks for, sends back the results, and repeats until the
 model answers. That repeat is **the loop**: `agent()` in [`harness/core/loop.py`](../harness/core/loop.py).
-Start reading there.
+Start reading there: it is near the end of the file, after the small helpers it uses, so jump to `agent()`
+first and come back to the helpers when it calls them. [From loop.py to the page](#from-looppy-to-the-page)
+shows how what the loop does ends up on screen.
 
 ```
  You ──▶ Call the model ──▶ Model replies ──▶ Run tools ──┐
@@ -36,6 +38,7 @@ Harness/
 │   │   │                    and submit_expense (a strict input form: structured output)
 │   │   ├── office_tools.py  40 pretend office tools (book_room, request_leave, ...): a long tool list to try
 │   │   ├── providers.py     one loop, several AI services: only the address, key, model and prices change
+│   │   ├── local_models.py  models on your own server (Ollama, LM Studio): its address, its models, why not
 │   │   └── mock_server.py   a stand-in for the Anthropic API that gets its replies from `claude -p`
 │   ├── features/            add-ons to the loop, one idea per file
 │   │   ├── memory.py        "About you": facts the harness adds to every conversation; the remember_fact tool
@@ -85,6 +88,19 @@ Harness/
 
 Every folder the lab uses is worked out in one place, [`harness/paths.py`](../harness/paths.py).
 
+## From loop.py to the page
+
+The loop doesn't know about the page. As it works, `agent()` calls `on_event(kind, ...)` with what just happened,
+and whoever started it decides what to do with that. The kinds are `request` (what is about to be sent),
+`text` (a piece of a streamed reply), `retry` (the service was busy, so it waits and tries again), `response`
+(what came back), `tool_call`, `tools_at_once`, `hook` (what your hook decided) and `tool_result`.
+
+The server ([`harness/web/server.py`](../harness/web/server.py), `Session.emit`) records each one, numbered,
+in the conversation's list of events. The page reads that list and builds every view from it
+([`ui/src/model/derive.ts`](../ui/src/model/derive.ts)): `request` becomes the Inspector's Sent and Raw tabs,
+`response` the Received tab, and `tool_call`, `hook` and `tool_result` the tool rows in the chat and the Tools
+tab. The terminal version ([`harness/cli.py`](../harness/cli.py)) listens to the same events and prints them.
+
 ## Providers
 
 [`harness/core/providers.py`](../harness/core/providers.py) keeps the loop the same for every AI service:
@@ -92,9 +108,10 @@ only the address, key, model and prices change.
 
 | Provider | Needs | Notes |
 |---|---|---|
-| **mock** (default) | Claude Code, logged in | [`mock_server.py`](../harness/core/mock_server.py) imitates the Anthropic API and gets its replies from `claude -p`. Free on your plan, but each call takes 20 to 60 s. See [what the mock can't show](limitations.md) |
+| **mock** (default) | Claude Code, logged in | [`mock_server.py`](../harness/core/mock_server.py) imitates the Anthropic API and gets its replies from `claude -p`. Free on your plan, but each call takes about 5 to 30 s. See [what the mock can't show](limitations.md) |
 | **anthropic** | `ANTHROPIC_API_KEY` | the real Anthropic API, paid per use |
 | **deepseek** | `DEEPSEEK_API_KEY` | DeepSeek's Anthropic-compatible API, paid per use |
+| **ollama**, **lmstudio**, **custom** | a server you run | a model on your own computer (or another you choose), free. The servers take Anthropic-format requests at `/v1/messages`, so only the address changes. [`local_models.py`](../harness/core/local_models.py) keeps the addresses (`data/local_servers.json`), asks each server which models it has (`/v1/models`; Ollama also says which can use tools) and says why one can't be used. See [Models on your own computer](getting-started.md#models-on-your-own-computer) |
 
 ## Two loops: a workflow
 

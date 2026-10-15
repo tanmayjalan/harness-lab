@@ -1,12 +1,15 @@
-// Settings → Model: provider and model, thinking, caching, when changes apply, limits.
-import type { Effort } from '../../api/types'
-import { count } from '../../lib/format'
-import { missingKeyHelp } from '../composer/providerWords'
+// Settings → Model: provider and model, your own servers, thinking, caching, when changes apply, limits.
+import { useEffect, useId, useState } from 'react'
+import { api } from '../../api/client'
+import type { Effort, ProviderInfo } from '../../api/types'
+import { count, plural } from '../../lib/format'
+import { localNote, missingKeyHelp, modelsOf, toolsTag, unusable } from '../composer/providerWords'
 import { CONCEPTS } from '../../learn/concepts'
-import { switchProvider } from '../../store/selectors'
+import { errorMessage, switchProvider } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
-import { Callout, RadioRow, Skeleton } from '../ui'
+import { toast } from '../../store/ui'
+import { Button, Callout, Field, RadioRow, Skeleton } from '../ui'
 import { Changed, Heading, save } from './common'
 import { NumberField } from './NumberField'
 import { WorkflowDiagram } from '../run/WorkflowDiagram'
@@ -19,11 +22,14 @@ export function ModelSection() {
   const running = useSession((s) => s.running)
   const current = useSession((s) => s.provider) ?? info?.provider
   const currentModel = useSession((s) => s.model) || info?.model
+  // Ask again on opening, so a server started since the page loaded (Ollama, LM Studio) is noticed
+  useEffect(() => { void useServer.getState().loadInfo() }, [])
   if (!info) return <Skeleton className="h-40" />
   return (
     <div>
       <Heading title="Model">Which model answers, how it thinks and caches, and the limits on each message.</Heading>
       <ProviderAndModel current={current ?? null} currentModel={currentModel ?? null} running={running} />
+      <LocalServers />
       <ThinkingAndCaching provider={current ?? 'mock'} />
       <WorkflowSetting />
       <WhenChangesApply />
@@ -38,21 +44,23 @@ export function ModelSection() {
 function ProviderAndModel({ current, currentModel, running }: { current: string | null; currentModel: string | null; running: boolean }) {
   const providers = useServer((s) => s.info?.providers) ?? []
   const chosen = providers.find((p) => p.name === current)
-  const models = chosen ? chosen.models ?? [chosen.model] : []
+  const models = chosen ? modelsOf(chosen) : []
   const missing = providers.filter((p) => p.missing_key && p.name !== current)
+  const notReady = providers.filter((p) => p.local && p.problem && p.name !== current)
   return (
     <fieldset className="space-y-2 rounded-lg border border-line p-4">
       <legend className="px-1 font-medium">Provider and model</legend>
       <RadioRow label="Provider" value={current} options={providers.map((p) => [p.name, p.label])}
-        disabled={running || ((name) => !!providers.find((p) => p.name === name)?.missing_key)}
+        disabled={running || ((name) => { const p = providers.find((x) => x.name === name); return !p || !!unusable(p) })}
         onChange={(name) => void switchProvider(name)} />
       {chosen && (models.length > 1 ? (
-        <RadioRow label="Model" value={currentModel} options={models.map((m) => [m, <code key={m}>{m}</code>])}
+        <RadioRow label="Model" value={currentModel} options={models.map((m) => [m, <code key={m}>{m}{toolsTag(chosen, m)}</code>])}
           disabled={running} onChange={(m) => void switchProvider(chosen.name, m)} />
-      ) : <p className="text-sm text-muted">model <code>{chosen.model}</code></p>)}
+      ) : <p className="text-sm text-muted">model <code>{models[0]}</code></p>)}
       {chosen && (
         <p className="text-xs text-muted">
           {chosen.missing_key ? missingKeyHelp(chosen.missing_key)
+            : chosen.local ? localNote(chosen)
             : chosen.price ? `$${chosen.price.input} in · $${chosen.price.cached} cached · $${chosen.price.output} out, per million tokens (${chosen.price.note})`
               : "No cost to you. Tokens and cost are estimates (about 4 characters a token, at the chosen model's price)."}
         </p>
@@ -60,8 +68,73 @@ function ProviderAndModel({ current, currentModel, running }: { current: string 
       {missing.map((p) => (
         <p key={p.name} className="text-xs text-muted"><b className="font-medium text-fg">{p.label}:</b> {missingKeyHelp(p.missing_key!)}</p>
       ))}
+      {notReady.length > 0 && (
+        <p className="text-xs text-muted"><b className="font-medium text-fg">{notReady.map((p) => p.label).join(', ')}:</b> not
+          ready yet. See Models on your own server, below.</p>
+      )}
       {running && <p className="text-sm text-warn">Wait for the current message to finish to switch.</p>}
     </fieldset>
+  )
+}
+
+// Ollama, LM Studio or another server you run: its address, what it has, and why it can't be used (if it can't)
+function LocalServers() {
+  const providers = (useServer((s) => s.info?.providers) ?? []).filter((p) => p.local)
+  const [checking, setChecking] = useState(false)
+  if (!providers.length) return null
+  const checkAgain = async () => {
+    setChecking(true)
+    try {
+      await api.localServer(providers[0].name) // (asks every server afresh)
+      await useServer.getState().loadInfo()
+    } catch (err) {
+      toast({ kind: 'error', title: "Couldn't check", body: errorMessage(err) })
+    } finally {
+      setChecking(false)
+    }
+  }
+  return (
+    <fieldset className="mt-4 space-y-3 rounded-lg border border-line p-4">
+      <legend className="px-1 font-medium">Models on your own server</legend>
+      <p className="text-sm text-muted">
+        Ollama, LM Studio, or another server that takes Anthropic-format requests. The lab lists the models each one
+        has; pick one under Provider. Small models often can't use tools, and the harness offers tools with every message.
+      </p>
+      {providers.map((p) => <LocalServer key={p.name} p={p} />)}
+      <Button size="sm" onClick={() => void checkAgain()} disabled={checking}>{checking ? 'Checking…' : 'Check again'}</Button>
+    </fieldset>
+  )
+}
+
+function LocalServer({ p }: { p: ProviderInfo }) {
+  const [url, setUrl] = useState(p.address ?? '')
+  useEffect(() => setUrl(p.address ?? ''), [p.address])
+  const id = useId()
+  const changed = url.trim() !== (p.address ?? '')
+  const save = async () => {
+    try {
+      const saved = await api.localServer(p.name, url)
+      await useServer.getState().loadInfo()
+      toast({ kind: saved.problem ? 'info' : 'ok', title: `${p.label} address saved`, body: saved.problem ?? `${plural(saved.models?.length ?? 0, 'model')} found.` })
+    } catch (err) {
+      toast({ kind: 'error', title: "Couldn't save that address", body: errorMessage(err) })
+    }
+  }
+  const found = p.models ?? []
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <label htmlFor={`${id}-url`} className="w-28 font-medium">{p.label}</label>
+        <Field id={`${id}-url`} size="sm" value={url} aria-describedby={`${id}-status`} spellCheck={false}
+          placeholder={p.name === 'custom' ? 'for example http://192.168.1.20:8080' : 'http://127.0.0.1:11434'} onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && changed) { e.preventDefault(); void save() } }} className="w-72" />
+        <Button size="sm" onClick={() => void save()} disabled={!changed}>Save address</Button>
+      </div>
+      <p id={`${id}-status`} className={p.problem ? 'text-xs text-warn' : 'text-xs text-muted'}>
+        {p.problem ?? `${plural(found.length, 'model')}: ${found.map((m) => m + toolsTag(p, m)).join(', ')}.`}
+        {!p.problem && !p.this_computer && ` Your messages go to ${p.address}, not just this computer.`}
+      </p>
+    </div>
   )
 }
 
@@ -69,15 +142,23 @@ const BUDGETS = [2000, 4000, 8000, 12000]
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
 // What each provider does with the two switches, in plain words
+const LOCAL_THINKING = "Sent as a budget, but a local server doesn't hold the model to it. A model that can't think may refuse the call: turn thinking off then."
+const LOCAL_CACHE = "Ollama reuses the start of the last request by itself and reports it as read from cache, so you see cache hits with this on or off; it ignores the marks. Other servers may not cache at all."
 const THINKING_NOTE: Record<string, string> = {
   anthropic: 'Opus 5.5 always thinks; this sets how hard (the effort) and asks for a summary of its reasoning, which you can read under each call. "Default" sends no thinking setting, so Opus uses its own default effort.',
   mock: "claude -p gets the budget (Off = 0). Haiku then thinks or doesn't; Opus and Sonnet 5.5 may think a little anyway. You see that it thought, but not the text: claude -p doesn't return it.",
   deepseek: "Sent as a budget. If DeepSeek's endpoint doesn't accept it, the call fails with the reason: turn it off then.",
+  ollama: LOCAL_THINKING,
+  lmstudio: LOCAL_THINKING,
+  custom: LOCAL_THINKING,
 }
 const CACHE_NOTE: Record<string, string> = {
   anthropic: 'From the second call on, watch "from cache" in the Inspector. The first call writes the cache (a little dearer).',
   mock: "No effect on the mock: it can't cache. Its token numbers are estimates. Use the Anthropic API to see the switch make a difference (DeepSeek caches on its own, so it shows no difference there).",
   deepseek: 'DeepSeek caches repeated starts by itself, so you see cache hits with this on or off.',
+  ollama: LOCAL_CACHE,
+  lmstudio: LOCAL_CACHE,
+  custom: LOCAL_CACHE,
 }
 
 function ThinkingAndCaching({ provider }: { provider: string }) {

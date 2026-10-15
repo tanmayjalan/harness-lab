@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 from harness import paths
-from harness.core import tools
+from harness.core import local_models, tools
 from harness.features import checkpoints, hooks, lab_settings, mcp_client, memory, skills
 from harness import evals
 from harness.web import compare, conversations
@@ -37,6 +37,7 @@ def prepare(empty=False):
     evals.HISTORY = tmp / "data" / "evals"
     compare.HISTORY = tmp / "data" / "compare"
     checkpoints.DIR = tmp / "data" / "checkpoints"  # the copies of files Rewind puts back
+    local_models.PATH = tmp / "data" / local_models.PATH.name  # the addresses of your own model servers
     hooks.PATH = tmp / "config" / hooks.PATH.name
     paths.CONFIG = tmp / "config"  # the eval questions (config/evals.json)
     mcp_client.CONFIG = tmp / "config" / mcp_client.CONFIG.name  # which MCP servers to start
