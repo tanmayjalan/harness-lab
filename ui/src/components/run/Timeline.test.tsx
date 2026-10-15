@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import * as RTooltip from '@radix-ui/react-tooltip'
 import type { HarnessEvent } from '../../api/types'
 import { deriveRuns } from '../../model/derive'
@@ -7,6 +7,7 @@ import { usePrefs, useUi } from '../../store/ui'
 import { Timeline } from './Timeline'
 import { CONCEPTS } from '../../learn/concepts'
 import { RunView } from './RunView'
+import { Announcer } from '../shell/Announcer'
 import { ToolRow } from './ToolRow'
 import { HelperCard } from './HelperCard'
 import { useSession } from '../../store/session'
@@ -52,7 +53,7 @@ describe('Timeline', () => {
   it('explains an idea only at its first appearance', () => {
     show(toolTurn)
     // two calls ask for tools, but the explanation appears once (waiting as an ⓘ behind the loop's, which is open)
-    expect(screen.getAllByRole('button', { name: `What does "${CONCEPTS.tool_use.term}" mean?` })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: `New, not read yet: what does "${CONCEPTS.tool_use.term}" mean?` })).toHaveLength(1)
   })
 
   it('says which tools were not run when stopped, and why things were blocked', () => {
@@ -72,7 +73,7 @@ describe('Timeline', () => {
     show(declined)
     fireEvent.click(screen.getByText('write_file'))
     expect(screen.queryByText(/the harness ran it here/)).toBeNull()
-    expect(screen.getByText(/The model asked for/).textContent).toMatch(/you declined it/)
+    expect(within(screen.getByTestId('details')).getByText(/The model asked for/).textContent).toMatch(/you declined it/)
   })
 
   it('an opened blocked row says the harness refused it', () => {
@@ -202,7 +203,8 @@ describe('timeline accessibility (F321 F322 F323 F324 F325 F326b)', () => {
     // nothing visible before the text: the bubble keeps white space, so a stray space would indent it
     const visible = [...you.parentElement!.childNodes].filter((n) => n !== you)
     expect(visible[0].textContent).toMatch(/^\S/)
-    const model = screen.getByText('Model:')
+    // F433: and it is a heading, so a screen reader can jump from reply to reply
+    const model = screen.getByRole('heading', { name: "The model's reply" })
     expect(model).toHaveClass('sr-only')
     expect(model.closest('.rounded-bl-md')).not.toBeNull()
   })
@@ -244,7 +246,8 @@ describe('timeline accessibility (F321 F322 F323 F324 F325 F326b)', () => {
     useUi.setState({ approvalDock: null })
     const events = answer as unknown[]
     useSession.setState({ conversation: 'c1', derived: deriveRuns(events.slice(0, 2) as HarnessEvent[]), loaded: true, running: true, origin: null, frozen: false })
-    render(<RTooltip.Provider><RunView composerRef={{ current: null }} /></RTooltip.Provider>)
+    useUi.setState({ spoken: { text: '', n: 0 } })
+    render(<RTooltip.Provider><RunView composerRef={{ current: null }} /><Announcer /></RTooltip.Provider>)
     act(() => useSession.setState({ derived: deriveRuns(events as HarnessEvent[]), running: false }))
     expect(screen.getByText(/^Reply received \(1 call\)/)).toBeInTheDocument()
   })
@@ -279,13 +282,15 @@ describe('timeline accessibility (F321 F322 F323 F324 F325 F326b)', () => {
     expect(screen.queryByText(CONCEPTS.loop.long[0])).toBeNull()
   })
 
-  it('the Inspector starts closed and opens when you pick a call; a tool row alone does not open it', () => {
+  // F406: a tool row opens it too, on its Tools tab (the first experiment says "click a tool row, then Inspector → Tools")
+  it('the Inspector starts closed and opens when you pick a call or a tool row', () => {
     usePrefs.setState({ inspectorOpen: false })
     show(toolTurn)
-    fireEvent.click(screen.getByText('get_weather'))
-    expect(usePrefs.getState().inspectorOpen).toBe(false)
     fireEvent.click(screen.getByRole('button', { name: /^Call 1/ }))
     expect(usePrefs.getState().inspectorOpen).toBe(true)
+    usePrefs.setState({ inspectorOpen: false, inspectorTab: 'summary' })
+    fireEvent.click(screen.getByText('get_weather'))
+    expect(usePrefs.getState()).toMatchObject({ inspectorOpen: true, inspectorTab: 'tools' })
   })
 
   it('in learning mode every explanation stays in full', () => {

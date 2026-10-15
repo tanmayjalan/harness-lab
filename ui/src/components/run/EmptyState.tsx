@@ -8,7 +8,7 @@ import { toast, usePrefs, useUi } from '../../store/ui'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { LoopDiagram } from '../inspector/LoopDiagram'
-import { setUpExperiment } from '../../learn/setup'
+import { putBack, setUpExperiment } from '../../learn/setup'
 import { Chip } from '../ui'
 
 // The provider in use: the session's, else the server's default (both hooks are always called)
@@ -33,7 +33,7 @@ export async function askThenPick(x: Experiment, before?: () => Promise<void>, o
     }
     if (before) await before() // (without one, start at once)
     if (opts?.fillOnly) useUi.getState().fillDraft(x.message)
-    else start(x)
+    else await start(x)
   }
   if (useSession.getState().running) return go() // (says to wait)
   const typed = useUi.getState().composerText.trim()
@@ -47,17 +47,21 @@ export async function askThenPick(x: Experiment, before?: () => Promise<void>, o
   await go()
 }
 
-function start(x: Experiment) {
+// F412: what an earlier experiment changed is undone first, so its settings don't stack under this
+// one (a 2-call limit left on would stop the next experiment part-way)
+async function start(x: Experiment) {
   useUi.getState().setExperiment(x.id)
   useUi.getState().fillDraft(x.message)
-  setUpExperiment(x)
+  const earlier = usePrefs.getState().experimentBefore
+  if (earlier && !(await putBack({ quiet: true }))) return // (putBack said why)
+  await setUpExperiment(x, earlier?.changes)
 }
 
-// What a card will do besides send its message
+// What a card will do besides send its message. F409: not the settings it changes (often none on
+// yours, and the Undo bar above the message box says exactly what changed once it has)
 function CardTags({ x }: { x: Experiment }) {
   const tags = [
     x.predict && 'guess first',
-    x.apply && 'changes a setting (undoable)',
     x.switchTo && 'switches model (undoable)',
     x.needs && `needs ${x.needs}`,
   ].filter(Boolean) as string[]
@@ -107,7 +111,7 @@ const NEXT = 3
 function NextExperiments({ disabled }: { disabled: boolean }) {
   const done = usePrefs((s) => s.experimentsDone)
   const provider = useCurrentProvider()
-  const next = EXPERIMENTS.filter((x) => !done.includes(x.id)).slice(0, NEXT)
+  const next = EXPERIMENTS.filter((x) => !done.includes(x.id)).slice(0, NEXT) // (in teaching order: F408)
   return (
     <div className="space-y-2">
       {next.length > 0 && (
@@ -163,7 +167,7 @@ export function EmptyState({ disabled }: { disabled: boolean }) {
         <h1 className="text-lg font-semibold">See how an AI agent harness works</h1>
         <p className="mx-auto max-w-xl text-sm text-muted">
           Send a message and watch the loop: the harness calls the model, runs the tools it asks for, and
-          calls it again until it answers. Click any call to look inside it on the right.
+          calls it again until it answers. Click any call to look inside it in the Inspector.
         </p>
         {provider === 'mock' && (
           <p className="mx-auto max-w-xl text-sm text-muted">

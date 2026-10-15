@@ -13,11 +13,14 @@ export function Announcer() {
   // The same words twice must still change the region, or a screen reader stays silent the second time
   const say = (t: string) => setText((prev) => `${t}${prev.endsWith('​') ? '' : '​'}`)
   useEffect(() => { if (last) say(`${last.title}${last.body ? `. ${last.body}` : ''}`) }, [last?.id])
+  // a sentence the page asked to have read out (say() in the ui store): the call [ and ] moved to, a guess
+  const spoken = useUi((s) => s.spoken)
+  useEffect(() => { if (spoken.n) say(spoken.text) }, [spoken.n])
   // The approval panel announces itself (role="alert") when it is on screen. On another screen the
   // "waiting for you" toast says it (and this region mirrors that toast), and on the narrow Inspect pane
   // the page switches back to the chat. So this only has to cover an open dialog.
   useEffect(() => {
     if (waiting && dialog) say('The harness is waiting for you: a tool needs your Allow or Decline. Close this dialog to answer.')
   }, [waiting?.id])
-  return <div className="sr-only" role="status" aria-live="polite">{text}</div>
+  return <div className="sr-only" role="status" aria-live="polite" data-announcer>{text}</div>
 }

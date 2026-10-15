@@ -5,14 +5,15 @@ import type { Run } from '../../model/derive'
 import { useInspectedCallId } from '../../store/selectors'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
-import { useUi } from '../../store/ui'
+import { say, useUi } from '../../store/ui'
 import { useCompare } from '../../store/compare'
 import { useEvals } from '../../store/evals'
 import { Composer, type ComposerHandle } from '../composer/Composer'
 import { ApprovalDock } from '../composer/ApprovalDock'
 import { Button, Callout, Skeleton } from '../ui'
 import { EmptyState } from './EmptyState'
-import { ExperimentChanges, ExperimentHeader, ExperimentNow, ExperimentReveal } from './ExperimentPanels'
+import { ExperimentChanges, ExperimentHeader, ExperimentNow, ExperimentReveal, revealWords } from './ExperimentPanels'
+import { stopWords } from '../../lib/stopWords'
 import { Timeline } from './Timeline'
 
 const nearBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 120
@@ -32,6 +33,10 @@ export function RunView({ composerRef, onRerun, onRewind }:
   const scroller = useRef<HTMLDivElement>(null)
   const [atBottom, setAtBottom] = useState(true)
   const stick = useRef(true)
+  // F405: an empty conversation (or one still loading) never sticks to the bottom: its page grows as it
+  // loads, and following that growth would hide the heading
+  const hasRuns = useRef(false)
+  hasRuns.current = loaded && model.runs.length > 0
 
   // Is there anything below what you can see? Checked after every change, not only when you
   // scroll: content can shrink (the empty screen giving way to a short reply) without a scroll
@@ -39,14 +44,14 @@ export function RunView({ composerRef, onRerun, onRewind }:
     const el = scroller.current
     if (!el) return
     const b = nearBottom(el)
-    if (b) stick.current = true
+    if (b && hasRuns.current) stick.current = true
     setAtBottom(b)
   }
 
   // Follow new content while you're at the bottom; leave you alone if you scrolled up to read
   useLayoutEffect(() => {
     const el = scroller.current
-    if (el && stick.current) el.scrollTop = el.scrollHeight
+    if (el && stick.current && hasRuns.current) el.scrollTop = el.scrollHeight
     measure()
   }, [model, live])
 
@@ -58,7 +63,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
     const el = scroller.current
     if (el) el.scrollTop = runs > 0 ? el.scrollHeight : 0
     measure()
-  }, [conversation, runs])
+  }, [conversation, runs, loaded])
 
   // Content can also change size by itself (an explanation closing, a tool row opening)
   useEffect(() => {
@@ -70,7 +75,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
         useUi.getState().setKeepScroll(false)
         stick.current = false
       }
-      if (stick.current) el.scrollTop = el.scrollHeight
+      if (stick.current && hasRuns.current) el.scrollTop = el.scrollHeight
       measure()
     })
     ro.observe(el)
@@ -82,7 +87,6 @@ export function RunView({ composerRef, onRerun, onRewind }:
   const pendingRow = pending?.toolId ? model.tools[pending.toolId] : undefined
   // When the approval panel goes, put focus back in the message box and say what happened
   const lastPending = useRef<string | null>(null)
-  const [announce, setAnnounce] = useState('')
   useEffect(() => {
     if (pending) {
       lastPending.current = pending.id
@@ -93,8 +97,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
     lastPending.current = null
     const decision = Object.values(model.tools).find((r) => r.approval?.id === was)?.approval?.decision
     if (decision === undefined) return // gone without an answer (lost contact, another conversation): say nothing
-    // (a counter in the text, so two answers in a row are both read out)
-    setAnnounce((a) => `${decision ? 'Allowed. The harness runs the tool.' : 'Declined. The harness carries on.'}${a.endsWith('\u200b') ? '' : '\u200b'}`)
+    say(decision ? 'Allowed. The harness runs the tool.' : 'Declined. The harness carries on.')
     document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus()
   }, [pending, model])
   // F324: a reply that arrives while you watch is read out, with how many calls it took. Only for a message
@@ -102,15 +105,46 @@ export function RunView({ composerRef, onRerun, onRewind }:
   const watched = useRef(new Set<string>())
   const last = model.runs[model.runs.length - 1]
   if (running) watched.current.add(`${conversation}:${last && last.outcome === 'running' ? last.index : model.runs.length + 1}`)
+  // F428: and so is a message that stops (Stop, or the call limit), with an experiment's reveal in the same
+  // sentence (two in a row would cut each other off). A failure only while the chat is hidden under the narrow
+  // Inspect view; otherwise its own alert reads it out. All of it through the page's Announcer (say()), which
+  // is outside the chat, so it is heard while the chat is hidden too
   const said = useRef(new Set<string>())
   useEffect(() => {
-    if (!last?.answer) return
+    if (!last || last.outcome === 'running') return
     const key = `${conversation}:${last.index}`
     if (!watched.current.has(key) || said.current.has(key)) return
     said.current.add(key)
     const n = last.callIds.length
-    setAnnounce((a) => `Reply received (${n} ${n === 1 ? 'call' : 'calls'})${a.endsWith('\u200b') ? '' : '\u200b'}`)
+    const limit = (last.errorDetail ?? last.error ?? '').match(/hit max_turns \((\d+)\)/)
+    const what = last.answer ? `Reply received (${n} ${n === 1 ? 'call' : 'calls'}).`
+      : last.outcome === 'stopped' ? 'Stopped. The conversation so far is kept.'
+        : limit ? `Stopped: this message reached the limit of ${limit[1]} model calls. The conversation so far is kept.`
+          : scroller.current?.closest('[inert]') ? `The model call failed. ${last.error ?? ''}` : ''
+    const text = `${what} ${revealWords(model)}`.trim()
+    if (text) say(text)
   }, [last, conversation])
+  // F428: while it runs, say each call as it comes back ("Call 1: asked for 2 tools"), so the wait isn't silent.
+  // Not the one that finishes: "Reply received" says that
+  const callsBack = useRef(new Set<string>())
+  useEffect(() => {
+    if (!running || !last || last.outcome !== 'running') return
+    if (!watched.current.has(`${conversation}:${last.index}`)) return
+    for (const id of last.callIds) {
+      const c = model.calls[id]
+      const seen = `${conversation}:${id}` // (call ids start again in each conversation)
+      if (!c || callsBack.current.has(seen) || (!c.stopReason && !c.failed)) continue
+      callsBack.current.add(seen)
+      const asked = (c.response?.content ?? []).filter((b) => b.type === 'tool_use').length
+      if (c.stopReason === 'tool_use') say(`Call ${c.turn}: ${stopWords(c.stopReason, Math.max(asked, c.toolIds.length))}.`)
+    }
+    // the reply starting to stream in (once per message: the text itself isn't read out as it grows)
+    const writing = `${conversation}:${last.index}:writing`
+    if (live && !callsBack.current.has(writing)) {
+      callsBack.current.add(writing)
+      say('The model is writing its reply.')
+    }
+  }, [model, running, last, conversation, live])
   const empty = loaded && model.runs.length === 0
 
   return (
@@ -118,7 +152,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
       <div ref={scroller} className="relative min-h-0 flex-1 overflow-y-auto"
         onScroll={(e) => {
           const b = nearBottom(e.currentTarget)
-          stick.current = b
+          stick.current = b && hasRuns.current
           setAtBottom(b)
         }}>
         <div className="mx-auto max-w-3xl px-4 py-6">
@@ -169,9 +203,13 @@ export function RunView({ composerRef, onRerun, onRewind }:
           )}
         </div>
       </div>
-      <div className="relative shrink-0 px-4 pt-2 pb-3">
+      {/* F429: at 200% zoom the guess, the hints and the box could leave the chat a sliver: this area takes at most
+          a little over half the height and scrolls itself beyond that. "Jump to latest" takes its own line at the top of
+          this area, so it never sits on top of the conversation's text */}
+      <div className="relative flex max-h-[55%] shrink-0 flex-col px-4 pt-2 pb-3">
         {!atBottom && !empty && (
-          <Button size="sm" className="absolute -top-10 left-1/2 -translate-x-1/2 rounded-full shadow-md"
+          <div className="flex shrink-0 justify-center pb-1.5">
+          <Button size="sm" data-testid="jump-latest" className="rounded-full shadow-sm"
             onClick={() => {
               const el = scroller.current
               // a jump, not a glide, when you asked for less motion (CSS can't reach a scroll started here)
@@ -181,9 +219,9 @@ export function RunView({ composerRef, onRerun, onRewind }:
             }}>
             <ArrowDown className="size-3.5" /> Jump to latest
           </Button>
+          </div>
         )}
-        <div className="mx-auto max-w-3xl">
-          <div className="sr-only" aria-live="polite">{announce}</div>
+        <div className="mx-auto min-h-0 w-full max-w-3xl overflow-y-auto px-1 py-0.5">
           {!pending && <><ExperimentChanges /><ExperimentNow model={model} /></>}
           {pending && <ApprovalDock key={pending.id} approval={pending} row={pendingRow} />}
           {/* kept mounted under the approval so a half-typed message survives */}

@@ -104,7 +104,7 @@ describe('the lesson', () => {
     const events = (toolTurn as Record<string, unknown>[]).map((e) => (e.kind === 'tool_call' ? { ...e, name: 'load_skill', input: { name: 'expenses' } } : e))
     wrap(<Timeline model={deriveRuns(events as HarnessEvent[])} inspectedCallId={null} live="" running={false} />)
     // one full explanation at a time: an earlier one (the loop) is open, so this one waits as a named ⓘ here
-    expect(screen.getByRole('button', { name: 'What does "skill" mean?' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New, not read yet: what does "skill" mean?' })).toBeInTheDocument()
   })
 
   it('the quiz has a question on skills, and "Quiz me" counts the questions', () => {
