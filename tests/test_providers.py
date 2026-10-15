@@ -21,7 +21,7 @@ class env_without_keys:
 
     def __init__(self, **extra):
         env = {k: v for k, v in os.environ.items()
-               if k not in ("DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL")}
+               if k not in ("DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "MOCK_KEY")}
         self.patches = [mock.patch.dict(os.environ, {**env, **extra}, clear=True),
                         mock.patch.object(providers, "saved_key", return_value=None)]
 
@@ -52,6 +52,12 @@ class ProviderTests(unittest.TestCase):
             client = providers.make_client("mock")
         self.assertEqual(str(client.base_url).rstrip("/"), "http://127.0.0.1:8765")
         self.assertEqual(client.max_retries, 0)
+
+    def test_the_mock_key_comes_from_serve_or_mock_key(self):
+        # The mock checks a key: the lab passes the one serve() made; a mock you start yourself uses MOCK_KEY
+        with env_without_keys(MOCK_KEY="chosen"):
+            self.assertEqual(providers.make_client("mock").api_key, "chosen")
+            self.assertEqual(providers.make_client("mock", api_key="from-serve").api_key, "from-serve")
 
     def test_key_saved_with_setx_is_found(self):
         with env_without_keys():
@@ -120,6 +126,21 @@ if __name__ == "__main__":
 
 
 class PlainErrorTests(unittest.TestCase):
+    # F399: claude -p's own sign-in failing is a Claude Code problem, not an API key one
+    def test_an_expired_claude_sign_in_says_to_sign_in_again(self):
+        for raw in ("Error code: 500 - claude -p exited 1: Failed to authenticate: OAuth session expired and could "
+                    "not be refreshed", "claude -p exited 1: Invalid API key · Please run /login"):
+            with self.subTest(raw=raw):
+                said = providers.plain_error(raw)
+                self.assertIn("Claude Code isn't signed in", said)
+                self.assertNotIn("ANTHROPIC_API_KEY", said)
+        self.assertIn("ANTHROPIC_API_KEY", providers.plain_error("Error code: 401 - authentication_error"))
+
+    def test_the_mock_refusing_its_key_is_said_plainly(self):
+        said = providers.plain_error("Error code: 401 - wrong or missing key for this mock server")
+        self.assertIn("MOCK_KEY", said)
+        self.assertNotIn("ANTHROPIC_API_KEY", said)
+
     # F240: the loop's own call limit, in the words the chat uses
     def test_the_call_limit_in_plain_words(self):
         self.assertEqual(providers.plain_error("RuntimeError: Stopped: hit max_turns (20)"),

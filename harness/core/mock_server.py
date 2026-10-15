@@ -29,7 +29,10 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-PORT = int(os.environ.get("MOCK_PORT", "8765"))
+from harness.core import local_only
+
+PORT =int(os.environ.get("MOCK_PORT", "8765"))
+MAX_BODY = 64 * 1024 * 1024  # the largest request accepted (a 1M-token history is a few MB of text)
 CLAUDE_TIMEOUT = 300  # seconds to wait for one `claude -p` reply
 
 # The shape we ask `claude -p` to answer in
@@ -172,8 +175,28 @@ def ask_claude(request):
             encoding="utf-8", env=env, cwd=empty_dir, timeout=CLAUDE_TIMEOUT,
         )
     if done.returncode != 0:
-        raise RuntimeError(f"claude -p exited {done.returncode}: {(done.stderr or done.stdout).strip()[:500]}")
+        raise RuntimeError(f"claude -p exited {done.returncode}: {failure_reason(done.stdout, done.stderr)}")
     return read_reply(done.stdout, tool_names)
+
+
+def failure_reason(stdout, stderr):
+    """Why `claude -p` failed, in its own words. Its output starts with a long setup line (folders, tool and
+    command names), and the reason ("Failed to authenticate: …") is near the end, so look there first."""
+    for line in reversed((stdout or "").splitlines()):
+        try:
+            step = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(step, dict):
+            continue
+        if step.get("type") == "result" and isinstance(step.get("result"), str) and step["result"].strip():
+            return step["result"].strip()[:500]
+        if step.get("type") == "assistant":
+            said = " ".join(b.get("text", "") for b in (step.get("message") or {}).get("content") or []
+                            if isinstance(b, dict) and b.get("type") == "text").strip()
+            if said:
+                return said[:500]
+    return ((stderr or "").strip() or (stdout or "").strip())[:500] or "no reason given"
 
 
 def read_reply(stream, tool_names):
@@ -220,8 +243,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path.split("?")[0] != "/v1/messages":
             return self.send_json(404, error("not_found_error", f"mock server only serves /v1/messages, not {self.path}"))
-        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))  # read first, even to refuse:
-        refused = self.refusal()                                            # unread bytes reset the connection
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            length = -1
+        if not 0 <= length <= MAX_BODY:  # refuse before reading: a page could send gigabytes
+            self.close_connection = True
+            return self.send_json(413 if length > MAX_BODY else 400,
+                                  error("invalid_request_error", f"Content-Length must be 0 to {MAX_BODY} bytes"))
+        body = self.rfile.read(length)  # read before refusing: unread bytes reset the connection
+        refused = self.refusal()
         if refused:
             return self.send_json(*refused)
         request = json.loads(body)
@@ -256,12 +287,12 @@ class Handler(BaseHTTPRequestHandler):
         """Why this request may not use the mock, or None. Each run spends your Claude Code plan, so only the
         harness may ask: any web page you visit can send a request to 127.0.0.1, but it can't set the right
         Host, send JSON without the browser asking this server first, or know the key."""
-        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
-        if host not in ("localhost", "127.0.0.1"):
+        if not local_only.addressed_here(self.headers):
             return 403, error("permission_error", "use http://127.0.0.1")
         if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
             return 415, error("invalid_request_error", "send JSON (Content-Type: application/json)")
-        if not self.key or not hmac.compare_digest(self.headers.get("x-api-key") or "", self.key):
+        sent = (self.headers.get("x-api-key") or "").encode("utf-8", "surrogateescape")  # bytes: any characters
+        if not self.key or not hmac.compare_digest(sent, self.key.encode("utf-8")):
             return 401, error("authentication_error", "wrong or missing key for this mock server")
         return None
 
@@ -376,6 +407,7 @@ if __name__ == "__main__":
     print(f"Mock Anthropic API on http://127.0.0.1:{PORT}  (replies come from `claude -p`; Ctrl+C to stop)")
     print(f"Its key (send it as the API key): {key}")
     try:
-        threading.Event().wait()  # the server runs in its own thread; wait here until Ctrl+C
+        while True:  # the server runs in its own thread; short sleeps so Ctrl+C gets through on Windows too
+            time.sleep(0.5)
     except KeyboardInterrupt:
         server.shutdown()

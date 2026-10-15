@@ -245,6 +245,10 @@ class ExampleHooksFileTests(unittest.TestCase):
         self.assertIsNone(self.h.before("run_python", {"code": "print(1 + 1)"}))
         self.assertIsNone(self.h.before("run_python", {"path": "scripts/totals.py"}))
 
+    def test_a_secret_looking_path_is_not_run_either(self):
+        self.assertIn(".env", self.h.before("run_python", {"path": "private/.env"}))
+        self.assertIsNone(self.h.before("run_python", {"path": "scripts/totals.py"}))
+
     def test_a_script_file_is_checked_too(self):
         # F388: the same check reads a script run by path, not only code the model wrote
         script = pathlib.Path(tools.WORKSPACE) / "cleanup.py"

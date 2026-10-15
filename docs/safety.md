@@ -17,8 +17,9 @@ are refused there.
 ## Running code is not a sandbox
 
 `run_python` is off until you turn on **Settings → Tools → Run code**, and it asks first, showing you the
-code: the code the model wrote, or, for a script file in the workspace, what the file says at that moment (it
-could still change before it runs). A script runs as you: it can read or change any of your files and reach the
+code: the code the model wrote, or, for a `.py` file in the workspace, what the file says at that moment. Any
+other path isn't opened before you decide (the model could name any file, such as a secrets file). If the
+file changes while you decide, it doesn't run. A script runs as you: it can read or change any of your files and reach the
 internet. The harness only:
 
 - starts it in `workspace/`;
