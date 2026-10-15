@@ -101,6 +101,7 @@ export function storySteps(model: RunModel, run: Run): StoryStep[] {
   })
 }
 
+// (provider: its name or its label, e.g. "mock" or "Mock (claude -p)")
 // The message's numbers on one quiet line: "3 trips to the model · 22s · about $0.03 if this were the paid API"
 export function storyNumbers(model: RunModel, run: Run, provider: string | null): string {
   const calls = callsOfRun(model, run)
@@ -108,7 +109,7 @@ export function storyNumbers(model: RunModel, run: Run, provider: string | null)
   if (run.endedAt) parts.push(seconds(run.endedAt - run.startedAt))
   if (run.cost > 0) {
     const estimated = calls.some((c) => c.estimated)
-    parts.push(`about ${dollars(run.cost)}${estimated ? ' or more' : ''}${provider === 'mock' ? ' if this were the paid API' : ''}`)
+    parts.push(`about ${dollars(run.cost)}${estimated ? ' or more' : ''}${provider && /^mock/i.test(provider) ? ' if this were the paid API' : ''}`)
   }
   return parts.join(' · ')
 }
