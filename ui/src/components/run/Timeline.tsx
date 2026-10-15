@@ -3,7 +3,7 @@
 import { AlertTriangle, ArrowLeftRight, Brain, CircleStop, RotateCcw, Scissors, Shuffle, Sparkles, Undo2 } from 'lucide-react'
 import { memo, useEffect, useRef, type ReactNode } from 'react'
 import type { Call, Run, RunModel } from '../../model/derive'
-import { callsOfRun } from '../../model/derive'
+import { callLimitHit, callsOfRun } from '../../model/derive'
 import { cn } from '../../lib/cn'
 import { approx, count, dollars, ESTIMATE_TITLE, plural, seconds, tokens } from '../../lib/format'
 import { Explain } from '../../learn/Explain'
@@ -167,8 +167,7 @@ function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, l
   const lastCall = calls[calls.length - 1]
   const waiting = active && !live && (model.status === 'waiting_model' || model.status === 'summarising')
   const hintSeen = usePrefs((s) => s.inspectHintSeen)
-  // The call limit: the raw error is the detail when the message is in plain words (older saves: the message)
-  const limitHit = (run.errorDetail ?? run.error ?? '').match(/hit max_turns \((\d+)\)/)
+  const limitHit = callLimitHit(run)
   // Seconds spent waiting for your Allow or Decline in this message
   const waitedForYou = calls.flatMap((c) => c.toolIds.map((id) => model.tools[id]?.approval))
     .reduce((n, a) => n + (a?.askedAt && a.decidedAt ? a.decidedAt - a.askedAt : 0), 0)
@@ -267,7 +266,7 @@ function RunBody({ run, model, first, inspectedCallId, selectedTool, onSelect, l
       )}
       {run.outcome === 'error' && limitHit && (
         <SystemNote icon={<CircleStop className="size-3.5" />} after={<Explain concept="max_turns" quiet className="mt-2 text-left" />}>
-          Stopped: this message reached the limit of {limitHit[1]} model calls.
+          Stopped: this message reached the limit of {limitHit} model calls.
           The conversation so far is kept; change the limit in <LimitsLink />.
         </SystemNote>
       )}

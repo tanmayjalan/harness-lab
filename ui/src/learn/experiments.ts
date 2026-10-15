@@ -2,7 +2,7 @@
 // to look while it runs, what it means, and what to try next. EXPERIMENTS is in the order they teach:
 // tier by tier (GROUPS), and within a tier in the order written here.
 import type { SettingsChange } from '../api/types'
-import type { Run, RunModel } from '../model/derive'
+import { callLimitHit, type Run, type RunModel } from '../model/derive'
 import { GROUPS, type ConceptKey, type Group } from './concepts'
 import type { InspectorTab } from '../store/ui'
 
@@ -24,6 +24,7 @@ export type Experiment = {
   needs?: string // a provider it needs to show anything, e.g. "the Anthropic API"
   notOn?: string // the provider that cannot show it (the mock, unless named here)
   predict?: Prediction // a guess to make before sending, checked against what happened
+  endsAtLimit?: boolean // it is meant to stop at the call limit: that stop counts as done
 }
 
 // Guess first, then see: the banner asks before you send, and compares after the run
@@ -161,7 +162,7 @@ const WRITTEN: Experiment[] = [
     tryNext: 'Undo, then Re-run the message: the full story comes back.',
   },
   {
-    id: 'runaway', tier: 'The loop', concept: 'max_turns',
+    id: 'runaway', tier: 'The loop', concept: 'max_turns', endsAtLimit: true,
     apply: { limits: { max_tokens: 16000, max_turns: 2 } },
     title: 'Runaway task',
     message: 'Roll a six-sided die, one roll per step, and keep rolling until you get a 6.',
@@ -381,9 +382,10 @@ export function nextExperiment(done: string[], current: string | null, provider:
 }
 
 // Ran to the end, on a provider that can show what it is about (a stopped or failed run, or
-// caching on the mock, doesn't count)
+// caching on the mock, doesn't count). F410: for one meant to stop at the call limit, that stop is the end
 export function experimentDone(x: Experiment, run: Run, provider: string | null): boolean {
-  return run.outcome === 'answered' && !cannotShow(x, provider)
+  const ended = run.outcome === 'answered' || (!!x.endsAtLimit && run.outcome === 'error' && callLimitHit(run) !== null)
+  return ended && !cannotShow(x, provider)
 }
 
 // The provider in use cannot show what the experiment is about (it needs another one)

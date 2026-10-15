@@ -248,10 +248,11 @@ describe('experiment cards', () => {
   beforeEach(() => useServer.setState({ info }))
 
   // F057: a card says what it will do to your setup, and API-only ones are greyed on the mock
-  it('cards say what they change and which need a real API', () => {
+  // F409: no "changes a setting" chip (false on your settings for some cards; the Undo bar says what changed)
+  it('cards say what they will do and which need a real API', () => {
     wrap(<ExperimentGrid onPick={() => {}} disabled={false} />)
-    const cut = screen.getByRole('button', { name: /Cut off mid-sentence/ })
-    expect(cut.textContent).toMatch(/changes a setting \(undoable\)/)
+    expect(screen.queryByText(/changes a setting/)).toBeNull()
+    expect(screen.getByRole('button', { name: /Same chat, new model/ }).textContent).toMatch(/switches model \(undoable\)/)
     expect(screen.getByRole('button', { name: /Watch the loop/ }).textContent).toMatch(/guess first/)
     const cache = screen.getByRole('button', { name: /Second call is cheaper/ })
     expect(cache).toHaveAttribute('aria-disabled', 'true') // F373: still reachable, and says why
