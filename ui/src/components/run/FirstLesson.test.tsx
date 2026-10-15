@@ -14,7 +14,9 @@ import answer from '../../test/fixtures/answer.json'
 import { EXPERIMENTS, experimentDone, findExperiment, nextExperiment } from '../../learn/experiments'
 import { GROUPS } from '../../learn/concepts'
 import { QUIZ } from '../../learn/quiz'
-import { EmptyState } from './EmptyState'
+import { askThenPick, EmptyState } from './EmptyState'
+import { useServer } from '../../store/server'
+import type { Settings, SettingsChange } from '../../api/types'
 import { HelpSheet } from '../shell/HelpSheet'
 
 beforeEach(() => {
@@ -234,5 +236,46 @@ describe('F411: the experiment you were following survives a reload', () => {
     await reload({ experimentId: 'approval', guess: null, experimentConversation: null })
     show([])
     expect(useUi.getState().draft.text).toBe(findExperiment('approval')!.message)
+  })
+})
+
+describe('F412: a new experiment starts from your settings, not on top of the last one', () => {
+  const base = {
+    system: 'S', system_default: 'S', changed: [], file: 'f', mcp_problems: [], hooks: { file: '', functions: [], problem: null },
+    trim: { enabled: false, keep_last: 2 }, compact: { enabled: false, over_chars: 40000 },
+    thinking: { enabled: false, budget: 4000, effort: 'medium' }, cache: { enabled: false }, apply: 'message',
+    limits: { max_tokens: 16000, max_turns: 20 },
+    tools: [{ name: 'write_file', description: 'Write.', default_description: 'Write.', permission: 'allow',
+      default_permission: 'ask', input_schema: {}, source: 'built in' }],
+  } as unknown as Settings
+
+  it("Runaway's 2-call limit is put back before Ask before acting sets up", async () => {
+    let current = base
+    const saved: SettingsChange[] = []
+    vi.spyOn(api, 'saveSettings').mockImplementation(async (change: SettingsChange) => {
+      saved.push(change)
+      const { permissions, ...rest } = change
+      current = { ...current, ...(rest as Partial<Settings>),
+        tools: current.tools.map((t) => ({ ...t, permission: permissions?.[t.name] ?? t.permission })) }
+      return current
+    })
+    useServer.setState({ settings: base })
+    useUi.setState({ toasts: [], composerText: '' })
+    usePrefs.setState({ experimentBefore: null })
+    await askThenPick(findExperiment('runaway')!)
+    expect(useServer.getState().settings!.limits.max_turns).toBe(2)
+
+    await askThenPick(findExperiment('approval')!)
+    expect(saved).toEqual([
+      { limits: { max_tokens: 16000, max_turns: 2 } }, // Runaway
+      { limits: { max_tokens: 16000, max_turns: 20 } }, // put back
+      { permissions: { write_file: 'ask' } }, // Ask before acting
+    ])
+    expect(useServer.getState().settings!.limits.max_turns).toBe(20)
+    expect(usePrefs.getState().experimentBefore?.changes).toEqual(['write_file set to Ask first'])
+    const note = useUi.getState().toasts.at(-1)!
+    expect(note.title).toMatch(/Ask before acting/)
+    expect(note.body).toMatch(/First put back what the last experiment changed \(at most 2 calls per message\)/)
+    vi.restoreAllMocks()
   })
 })
