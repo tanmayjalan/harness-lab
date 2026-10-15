@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import anthropic
 
-from harness.core import tools
+from harness.core import run_code, tools
 
 MODEL = "claude-opus-5-5"  # default when no model is passed to agent()
 MAX_TOKENS = 16000  # the longest reply the model may write in one call (thinking included)
@@ -45,8 +45,13 @@ def ask_text(name, args, outside=False):
     if name == "remember_fact":
         return f"\n  The model wants to remember about you: {args.get('label')}: {args.get('value')}. Allow? [y/N] "
     if name == "run_python":  # show the code itself: it runs as you, with your files (not a sandbox)
-        if "path" in args:
-            return f"\n  The model wants to run the Python script {tools.resolve(args['path'])}.{where} Allow? [y/N] "
+        if "path" in args:  # the file as it is now, so you see what will run (F388)
+            shown = run_code.script_text(args["path"])
+            body = (f"    (the file {shown['error']})" if "error" in shown
+                    else "\n".join("    " + line for line in shown["text"].splitlines()))
+            cut = "\n    (… the rest isn't shown)" if shown.get("cut") else ""
+            return (f"\n  The model wants to run the Python script {tools.resolve(args['path'])}.{where}"
+                    f" It says now (it could still change before it runs):\n{body}{cut}\n  Allow? [y/N] ")
         code = "\n".join("    " + line for line in str(args.get("code", "")).splitlines())
         return f"\n  The model wants to run this Python code (as you, from the workspace folder):\n{code}\n  Allow? [y/N] "
     return f"\n  The model wants to run {name}({args}). Allow? [y/N] "

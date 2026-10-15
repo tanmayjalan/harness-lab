@@ -8,7 +8,7 @@ import { decide } from '../../store/selectors'
 import { useUi } from '../../store/ui'
 import { Button, Kbd } from '../ui'
 
-function what(a: Approval): { line: string; detail?: string; mono?: string } {
+function what(a: Approval): { line: string; detail?: string; mono?: string; note?: string } {
   // Where the file really is, from the server; older saves only had it in the question's wording
   if (a.tool === 'write_file' || !a.tool) return { line: 'The model wants to write a file:', mono: a.where ?? a.path, detail: a.content }
   if (a.tool === 'read_file' || a.tool === 'list_files') {
@@ -17,7 +17,13 @@ function what(a: Approval): { line: string; detail?: string; mono?: string } {
   }
   if (a.tool === 'run_python') { // the code itself, so you can read what will run as you (it isn't a sandbox)
     if (typeof a.input.code === 'string') return { line: 'The model wants to run Python code it wrote, as you, from the workspace folder:', detail: a.input.code }
-    return { line: 'The model wants to run a Python script, as you, from the workspace folder:', mono: a.where ?? String(a.input.path ?? '') }
+    // A script file: what it says now (F388), so you read what will run before you allow it
+    const s = a.script
+    return { line: 'The model wants to run a Python script, as you, from the workspace folder:', mono: a.where ?? String(a.input.path ?? ''),
+      detail: s?.text,
+      note: !s ? undefined
+        : s.error !== undefined ? `The file ${s.error}, so you can't see what it would run.`
+        : `This is the file as it is now${s.cut ? ' (only its start is shown)' : ''}. It could still change before it runs.` }
   }
   if (a.tool === 'remember_fact') {
     return { line: 'The model wants to remember this about you, and share it in every future conversation:',
@@ -78,6 +84,7 @@ export function ApprovalDock({ approval, row }: { approval: Approval; row?: Tool
       <div className="space-y-1.5 text-sm">
         <div>{w.line} {w.mono && <code className="rounded bg-code px-1">{w.mono}</code>}</div>
         {w.detail && <pre className="code-block max-h-40">{w.detail}</pre>}
+        {w.note && <p className="text-xs text-muted">{w.note}</p>}
         {old && (
           <div className="text-xs text-warn">
             Replaces “{old.value}”{old.shared ? '' : ", which isn't shared now: allowing shares the new value"} (same label: {old.label}).

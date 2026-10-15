@@ -482,6 +482,8 @@ class Session:
                 extra["setting"] = self._permission_now(name)  # your rule, before the workspace check
             if name in tools.PATH_TOOLS and call_input.get("path"):
                 extra["where"] = str(tools.resolve(call_input["path"]))  # where the file really is
+            if name == "run_python" and call_input.get("path"):  # a script file: show what it says (F388)
+                extra["script"] = run_code.script_text(call_input["path"])
             if name == "remember_fact":  # a label you already have: say what it replaces (F277)
                 old = memory.find(memory.load(self.profile_path), call_input.get("label", ""))
                 if old:
@@ -1088,10 +1090,9 @@ def make_server(session, port, clients=None):
 
 
 def start_mock():
-    """Run mock_server in this process on a free port; return a client that uses it."""
-    mock = ThreadingHTTPServer(("127.0.0.1", 0), mock_server.Handler)
-    threading.Thread(target=mock.serve_forever, daemon=True).start()
-    return providers.make_client("mock", base_url=f"http://127.0.0.1:{mock.server_port}")
+    """Run mock_server in this process on a free port; return a client that uses it (with its key)."""
+    mock, key = mock_server.serve()
+    return providers.make_client("mock", base_url=f"http://127.0.0.1:{mock.server_port}", api_key=key)
 
 
 class Clients:

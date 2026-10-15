@@ -186,6 +186,46 @@ class RunPythonTests(Workspace):
         self.assertIn("Output:\n3", tools.run_tool("run_python", {"code": "print(1 + 2)"}))
 
 
+class ScriptShownTests(unittest.TestCase):
+    """F388: a script run by path is shown before you allow it, as code the model wrote is."""
+
+    def setUp(self):
+        self.script = pathlib.Path(tools.WORKSPACE) / "shown_script.py"
+        self.script.write_text("print('from the file')\n", encoding="utf-8")
+        self.addCleanup(self.script.unlink, missing_ok=True)
+
+    def test_the_file_text_is_read_and_long_ones_cut(self):
+        self.assertEqual(run_code.script_text("shown_script.py"), {"text": "print('from the file')\n", "cut": False})
+        self.script.write_text("x" * (run_code.SHOW_LIMIT + 5), encoding="utf-8")
+        shown = run_code.script_text("shown_script.py")
+        self.assertEqual((len(shown["text"]), shown["cut"]), (run_code.SHOW_LIMIT, True))
+        self.assertIn("can't be read", run_code.script_text("no_such_script.py")["error"])
+
+    def test_the_terminal_question_shows_the_file(self):
+        question = loop.ask_text("run_python", {"path": "shown_script.py"})
+        self.assertIn("    print('from the file')", question)
+        self.assertIn("could still change", question)
+        self.assertIn("(the file can't be read", loop.ask_text("run_python", {"path": "no_such_script.py"}))
+
+    def test_the_page_gets_the_file_with_the_approval(self):
+        path = pathlib.Path(tempfile.mkdtemp()) / "lab_settings.json"
+        lab_settings.save({"run_code": {"enabled": True}}, loop.SYSTEM, tools.TOOLS, loop.default_permission, path)
+        replies = [NS(stop_reason="tool_use", content=[ToolUseBlock(type="tool_use", id="r1", name="run_python",
+                                                                      input={"path": "shown_script.py"})]),
+                   NS(stop_reason="end_turn", content=[TextBlock(type="text", text="Not run.")])]
+        client = NS(messages=NS(create=lambda **kw: replies.pop(0)))
+        s = web_server.Session(client, "test", settings_path=path)
+        s.start("run it")
+        end = time.time() + 5
+        while not any(e["kind"] == "approval" for e in s.snapshot(0)["events"]) and time.time() < end:
+            time.sleep(0.01)
+        [approval] = [e for e in s.snapshot(0)["events"] if e["kind"] == "approval"]
+        self.assertEqual(approval["script"], {"text": "print('from the file')\n", "cut": False})
+        self.assertTrue(s.decide(approval["id"], False))  # decline it, so nothing runs
+        while s.running and time.time() < end + 5:
+            time.sleep(0.01)
+
+
 class WiringTests(unittest.TestCase):
     def clean(self, changes):
         return lab_settings.clean(changes, loop.SYSTEM, tools.TOOLS, loop.default_permission)

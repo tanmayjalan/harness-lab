@@ -145,7 +145,10 @@ export type ApprovalEvent = Base & {
   where?: string // for file tools: where the file really is
   setting?: Rule // your rule for the tool, before the workspace check
   replaces?: { label: string; value: string; shared: boolean } // remember_fact: the fact with that label now
+  script?: ScriptText // run_python with a path: what the file says now
 }
+// A script file as it was when you were asked: its text (cut after a limit), or why it couldn't be read
+export type ScriptText = { text: string; cut: boolean; error?: undefined } | { error: string; text?: undefined; cut?: undefined }
 export type DecisionEvent = Base & { kind: 'decision'; id: string; allowed: boolean }
 export type AnswerEvent = Base & { kind: 'answer'; text: string; provider: string; model: string }
 export type ProviderEvent = Base & { kind: 'provider'; name: string; label: string; model: string; history: number }
