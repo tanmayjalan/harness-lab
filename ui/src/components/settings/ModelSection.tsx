@@ -142,7 +142,7 @@ const BUDGETS = [2000, 4000, 8000, 12000]
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
 // What each provider does with the two switches, in plain words
-const LOCAL_THINKING = "Sent as a budget, but a local server doesn't hold the model to it. A model that can't think may refuse the call: turn thinking off then."
+const LOCAL_THINKING = "Sent as a budget, but a local server doesn't hold the model to it. Off is sent too (thinking: disabled): some models, such as gemma4, think unless told not to. You can read the model's own reasoning under each call."
 const LOCAL_CACHE = "Ollama reuses the start of the last request by itself and reports it as read from cache, so you see cache hits with this on or off; it ignores the marks. Other servers may not cache at all."
 const THINKING_NOTE: Record<string, string> = {
   anthropic: 'Opus 5.5 always thinks; this sets how hard (the effort) and asks for a summary of its reasoning, which you can read under each call. "Default" sends no thinking setting, so Opus uses its own default effort.',

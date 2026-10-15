@@ -120,7 +120,7 @@ def one_message(messages, client, provider, model, settings, facts, confirm=inpu
     is_mcp = mcp.handles if mcp else (lambda name: False)
     # Tools from MCP servers are someone else's code, so they ask first unless you change it (as in the page)
     permission = lab_settings.permission(settings, lambda name: "ask" if is_mcp(name) else loop.default_permission(name))
-    thinking = lab_settings.thinking_spec(settings, providers.thinking_style(provider))
+    thinking = lab_settings.thinking_spec(settings, providers.thinking_style(provider), providers.is_local(provider))
     cache = lab_settings.caching(settings)
     max_tokens, max_turns = lab_settings.limits(settings)
     together = lab_settings.at_once(settings)  # tools from MCP programs never run at the same time as others
