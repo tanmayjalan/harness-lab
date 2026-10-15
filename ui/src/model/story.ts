@@ -2,7 +2,8 @@
 // up the weather in Paris"), each tool what the harness did with it ("↩ The harness ran it here and sent
 // back: 20.9 °C, overcast"). Plain words only: no tool_use, stop_reason or other API names. Pure: no screen code.
 import type { ConceptKey } from '../learn/concepts'
-import { dollars, plural, seconds, shortArgs } from '../lib/format'
+import type { PromptCut } from '../api/types'
+import { count, dollars, plural, seconds, shortArgs } from '../lib/format'
 import { callLimitHit, callsOfRun, type Call, type Run, type RunModel, type ToolRow } from './derive'
 
 export type StoryTool = { toolId: string; what: string; back: string; tone: 'ok' | 'bad' | 'warn' | 'pending' }
@@ -12,6 +13,14 @@ export type StoryStep = {
   kind: 'tools' | 'answer' | 'cut' | 'failed' | 'waiting' | 'replied'
   lead: string // "The model asked for a tool:", "The model answered:", ...
   tools: StoryTool[]
+  promptCut?: PromptCut // the server cut the prompt of this call (see promptCutWords)
+}
+
+// What a cut prompt means, in plain words: the server read only part of what the harness sent
+export function promptCutWords(cut: PromptCut) {
+  return `The server read only ${count(cut.read)} of about ${count(cut.sent_about)} tokens: its window was too small, so `
+    + 'it cut the prompt to fit, and the start (the instructions and the tool list) may be lost. For Ollama, '
+    + 'give models a bigger window: setx OLLAMA_CONTEXT_LENGTH 32768, then restart Ollama.'
 }
 
 const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v))
@@ -77,7 +86,9 @@ export function storySteps(model: RunModel, run: Run): StoryStep[] {
   const calls = callsOfRun(model, run)
   let toolSteps = 0
   let ranOne = false
-  return calls.map((call, i): StoryStep => {
+  return calls.map((call, i): StoryStep => ({ ...step(call, i), ...(call.promptCut ? { promptCut: call.promptCut } : {}) }))
+
+  function step(call: Call, i: number): StoryStep {
     const n = i + 1
     const rows = call.toolIds.map((id) => model.tools[id]).filter(Boolean)
     if (rows.length || call.stopReason === 'tool_use') {
@@ -98,7 +109,7 @@ export function storySteps(model: RunModel, run: Run): StoryStep[] {
     if (call.stopReason && call.stopReason !== 'end_turn') return { callId: call.id, n, kind: 'cut', lead: 'The model stopped early:', tools: [] }
     const last = i === calls.length - 1
     return { callId: call.id, n, kind: last && run.answer ? 'answer' : 'replied', lead: last && run.answer ? 'The model answered:' : 'The model replied.', tools: [] }
-  })
+  }
 }
 
 // (provider: its name or its label, e.g. "mock" or "Mock (claude -p)")

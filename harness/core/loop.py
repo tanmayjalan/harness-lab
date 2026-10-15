@@ -4,6 +4,7 @@ send the results back, and repeat until it answers. Start reading here.
 Also here: the default system prompt, which tools need your OK (permissions), and stopping.
 The tools themselves are in tools.py.
 """
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -12,6 +13,29 @@ import anthropic
 from harness.core import run_code, tools
 
 MODEL = "claude-opus-5-5"  # default when no model is passed to agent()
+
+
+def _plain(value):
+    """An SDK object (a content block, say) as plain data, so its size can be measured."""
+    return value.model_dump() if hasattr(value, "model_dump") else str(value)
+
+
+def prompt_cut(request, usage):
+    """{"read": N, "sent_about": M} when the server read far fewer tokens than were sent, else None.
+
+    A server whose window is too small for the request can cut it to fit and answer anyway, with no error:
+    Ollama keeps only the very start and the end, so the system prompt and the tool list are lost. The only
+    sign is the count it reports. What was sent is guessed at about 4 characters a token, so only a count under
+    half of that is taken as a cut (real counts are never that far below the guess)."""
+    if usage is None:
+        return None
+    read = sum(getattr(usage, k, None) or 0
+               for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+    sent = {k: request[k] for k in ("system", "tools", "messages") if k in request}
+    about = len(json.dumps(sent, default=_plain)) // 4
+    if about >= 1000 and 0 < read < about / 2:
+        return {"read": read, "sent_about": about}
+    return None
 MAX_TOKENS = 16000  # the longest reply the model may write in one call (thinking included)
 CACHE = {"type": "ephemeral"}  # "keep everything up to here for a few minutes"
 SYSTEM = (
@@ -293,7 +317,8 @@ def _run_together(blocks, permission, run, hooks, on_event, offered=None):
 #                reported to on_event as "hook": which one, for which tool, what it decided
 #   max_tokens   the longest reply the model may write in one call (it stops with "max_tokens" there)
 #   thinking     {"style": "budget", "budget": N} or {"style": "adaptive", "effort": "medium"}: the model
-#                reasons step by step before it answers (None = don't ask for it)
+#                reasons step by step before it answers (None = don't ask for it; {"style": "off"} = say no,
+#                for models that think unless told not to, such as gemma4 in Ollama)
 #   cache        mark the request so the provider can reuse it on the next call (cheaper input)
 #   busy         practice: the first try of every call fails as if the service were busy (nothing is sent)
 #   at_once      name -> True if that tool may run alongside others: with it, the tools of one reply run at
@@ -325,6 +350,8 @@ def agent(messages, client, max_turns=20, confirm=input, on_event=ignore_event, 
             # Newer models (e.g. Opus 5.5) decide how much to think; you set the effort and ask for a summary
             request["thinking"] = {"type": "adaptive", "display": "summarized"}
             request["output_config"] = {"effort": thinking.get("effort", "medium")}
+        elif thinking and thinking.get("style") == "off":
+            request["thinking"] = {"type": "disabled"}
         elif thinking:
             request["thinking"] = {"type": "enabled", "budget_tokens": thinking["budget"]}
         # `api_body` is exactly what goes to the API apart from `messages` (already here, as sent): with them,
@@ -364,8 +391,9 @@ def agent(messages, client, max_turns=20, confirm=input, on_event=ignore_event, 
                     time.sleep(min(0.1, max(0.0, until - time.time())))
         # Keep the model's full reply (including its tool requests) in the history
         messages.append({"role": "assistant", "content": response.content})
+        usage = getattr(response, "usage", None)
         on_event("response", turn=turn, stop_reason=response.stop_reason, content=response.content,
-                 usage=getattr(response, "usage", None))
+                 usage=usage, prompt_cut=prompt_cut(request, usage))
 
         if response.stop_reason != "tool_use":
             # "end_turn" is the normal finish; "max_tokens" or "refusal" means it stopped early.

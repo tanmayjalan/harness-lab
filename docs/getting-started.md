@@ -87,9 +87,26 @@ Anthropic-format requests at `/v1/messages`, on this computer or another (then y
 computer). The addresses are saved in `data/local_servers.json`. If your server asks for a key, set
 `LOCAL_API_KEY` (`setx LOCAL_API_KEY "<key>"`); it is never saved in a file.
 
+**Give Ollama a bigger window first.** On a computer without a graphics card of its own, Ollama gives each model a
+window of only 4,096 tokens (the most it reads at once). The lab's instructions and tool list alone are about
+2,000, so a conversation soon outgrows it, and Ollama then cuts the prompt to fit, with no error: it keeps the end
+and drops the start, where the instructions and the tools are. The page marks such a call "prompt cut by the
+server". To give every model a 32,768-token window, run this once, then quit Ollama and start it again:
+
+```
+setx OLLAMA_CONTEXT_LENGTH 32768
+```
+
+A bigger window uses more memory (about 2 GB in all for `gemma4:e4b` at 32,768). `ollama ps` shows each loaded
+model's window (CONTEXT) and whether it runs on the graphics card or the processor (PROCESSOR).
+
 What to expect: small models are slower, make more mistakes with tools, and many can't use tools at all (Settings
-marks the ones Ollama says can't). Ollama reuses the start of the last request by itself (it ignores the
-lab's caching switch), and its token counts are approximate.
+marks the ones Ollama says can't). On the processor alone, a call can take 20 seconds to a minute or more, and the
+first call to a model waits for it to load. Ollama reuses the start of the last request by itself (it ignores the
+lab's caching switch), and its token counts are approximate. With thinking off, the lab tells the model so
+(`thinking: {type: "disabled"}`): some models, such as gemma4, otherwise think anyway, which is slower and keeps
+the answer from streaming until the thinking is done. With thinking on, you can read the model's whole reasoning
+under each call (**Show details**).
 
 ## If something goes wrong
 
@@ -101,6 +118,7 @@ lab's caching switch), and its token counts are approximate.
 | "The provider rejected the API key" | Check `ANTHROPIC_API_KEY` or `DEEPSEEK_API_KEY`: run `setup.bat` to test and save it. |
 | "Nothing answered at http://127.0.0.1:11434" (Ollama) or ":1234" (LM Studio) | Start Ollama (open the app, or run `ollama serve`), or in LM Studio start the server (Developer tab). Then press **Check again** in Settings → Model. |
 | "…is running but has no models" | Get one: `ollama pull qwen3:4b`, or download one in LM Studio. |
+| A call marked "prompt cut by the server", or a local model that forgets its tools or instructions in a long conversation | The server's window is too small. For Ollama, run `setx OLLAMA_CONTEXT_LENGTH 32768`, quit Ollama and start it again ([why](#models-on-your-own-computer)). In LM Studio, raise the model's context length when you load it. |
 | "This model can't use tools" | The harness offers tools with every message, so pick a model that can use them (on ollama.com/search, filter by Tools). Settings → Model marks the ones Ollama says can't. |
 | "The server doesn't take Anthropic-format requests" | Check the address. Update Ollama, or LM Studio to 0.4.1 or later. |
 | The first experiment's weather lookup fails | `get_weather` needs the internet (open-meteo.com). Try another experiment, or another network. |

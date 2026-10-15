@@ -69,6 +69,9 @@ class CleanTests(unittest.TestCase):
         off = save({"thinking": {"enabled": False, "budget": 2000}, "cache": {"enabled": False}}, path)
         self.assertEqual((lab_settings.thinking_budget(off), lab_settings.caching(off)), (None, False))
         self.assertIsNone(lab_settings.thinking_spec(off, "adaptive"))
+        # Your own server is told "off" out loud (gemma4 thinks unless told not to); "on" is the same as elsewhere
+        self.assertEqual(lab_settings.thinking_spec(off, "budget", say_off=True), {"style": "off"})
+        self.assertEqual(lab_settings.thinking_spec(kept, "budget", say_off=True), {"style": "budget", "budget": 2000})
         for bad in [{"thinking": {"enabled": True, "budget": 50}}, {"thinking": "yes"}, {"cache": True},
                     {"thinking": {"enabled": True, "effort": "extreme"}}]:
             with self.subTest(bad=bad), self.assertRaises(ValueError):

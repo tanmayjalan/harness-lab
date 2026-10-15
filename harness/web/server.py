@@ -244,7 +244,8 @@ class Session:
             # "Always allow" answered during this message counts at once, not only from the next message
             permission = lambda name, base=base: "allow" if name in self.allow_now and base(name) == "ask" else base(name)  # noqa: E731
             self._permission_now = permission  # helpers follow your rules too
-            self._thinking_now = lab_settings.thinking_spec(settings, providers.thinking_style(self.provider))
+            self._thinking_now = lab_settings.thinking_spec(settings, providers.thinking_style(self.provider),
+                                                           providers.is_local(self.provider))
             self._cache_now = lab_settings.caching(settings)
             self._busy_now = lab_settings.busy(settings)  # the practice switch, for helpers too
             self._config_now = lab_settings.snapshot(

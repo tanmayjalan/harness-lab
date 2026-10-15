@@ -2,7 +2,7 @@
 // model calls inside each run, tool rows inside each call, plus the plan, the pending approval
 // and running totals. Pure: same events in, same model out. No screen code here.
 import type {
-  ApprovalEvent, Block, CompactedEvent, HarnessEvent, HookEvent, HookName, HookVerdict, Outcome, RequestEvent,
+  ApprovalEvent, Block, CompactedEvent, HarnessEvent, HookEvent, HookName, HookVerdict, Outcome, PromptCut, RequestEvent,
   ResponseEvent, Rule, ScriptText, SubEvent, ToolCallEvent, ToolResultEvent, TrimInfo, Usage, Verdict, WorkflowStepName,
 } from '../api/types'
 
@@ -65,6 +65,7 @@ export type Call = {
   toolIds: string[]
   trimmed: TrimInfo
   retries?: Retry[] // the service was busy or briefly down: each wait and new try, in order
+  promptCut?: PromptCut // the server cut this call's prompt to fit its window (it said so only in its token count)
   atOnce?: { count: number; together: boolean; reason: string | null } // several tools, with "tools at once" on
   step?: number // the workflow step it belongs to (1, 2, ...), with the workflow on
   stepLabel?: string // that step's name, e.g. "Write"
@@ -282,6 +283,7 @@ export function deriveRuns(events: HarnessEvent[]): RunModel {
         call.stopReason = e.stop_reason
         call.tokens = tokensOf(e.usage)
         call.estimated = !!e.usage?.estimated
+        if (e.prompt_cut) call.promptCut = e.prompt_cut
         if (call.estimated) m.tokensEstimated = true
         call.cost = e.cost
         call.interim = e.stop_reason === 'tool_use' ? textOf(e.content).trim() : ''

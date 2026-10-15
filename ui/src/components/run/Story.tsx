@@ -5,7 +5,7 @@ import { Lightbulb } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import type { Run, RunModel } from '../../model/derive'
 import type { StoryStep } from '../../model/story'
-import { storyTakeaway } from '../../model/story'
+import { promptCutWords, storyTakeaway } from '../../model/story'
 import { ExplainIcon } from '../../learn/Explain'
 import { CONCEPTS } from '../../learn/concepts'
 import { usePrefs, useUi } from '../../store/ui'
@@ -41,6 +41,7 @@ export function StoryRail({ steps, active, waiting, hint }: { steps: StoryStep[]
               </ul>
             )}
             {s.tools.length === 1 && <div className={cn('text-[0.8125rem]', TONE[s.tools[0].tone])}>↩ {s.tools[0].back}</div>}
+            {s.promptCut && <p className="mt-1 text-[0.8125rem] text-warn">{promptCutWords(s.promptCut)}</p>}
           </li>
         )
       })}

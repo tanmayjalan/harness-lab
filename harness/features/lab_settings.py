@@ -218,11 +218,13 @@ def thinking_budget(settings):
     return t.get("budget") if t.get("enabled") else None
 
 
-def thinking_spec(settings, style):
-    """What loop.agent sends for thinking with a provider of this style ("adaptive" or "budget"), or None."""
+def thinking_spec(settings, style, say_off=False):
+    """What loop.agent sends for thinking with a provider of this style ("adaptive" or "budget"), or None.
+    `say_off`: with thinking off, tell the model so ({"style": "off"}) rather than send nothing. Some models
+    on your own server (gemma4 in Ollama) think unless told not to, which is slow and hides the streaming."""
     t = settings.get("thinking") or {}
     if not t.get("enabled"):
-        return None
+        return {"style": "off"} if say_off else None
     if style == "adaptive":
         return {"style": "adaptive", "effort": t.get("effort", "medium")}
     return {"style": "budget", "budget": t.get("budget", 4000)}
