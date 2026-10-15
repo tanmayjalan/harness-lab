@@ -41,7 +41,8 @@ API key is needed.
 
 By default replies come from `claude -p` on your Claude Code plan (the *mock*). With an API key you can use
 the Anthropic API or DeepSeek instead: `start.bat -Provider anthropic`. See
-[Getting started](docs/getting-started.md) for every option.
+[Getting started](docs/getting-started.md) for every option, and
+[If something goes wrong](docs/getting-started.md#if-something-goes-wrong) if a step fails.
 
 ## What you can try
 

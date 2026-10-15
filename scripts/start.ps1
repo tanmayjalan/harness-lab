@@ -7,11 +7,13 @@
 #   .\scripts\start.ps1 -Real                 same as -Provider anthropic
 #   .\scripts\start.ps1 -NoBrowser            don't open the browser
 #   .\scripts\start.ps1 -NoBuild              don't rebuild the page, even if ui\ changed
+#   .\scripts\start.ps1 -NoCheck              don't check claude -p first (the mock only)
 param(
     [ValidateSet("mock", "anthropic", "deepseek")][string]$Provider = "mock",
     [switch]$Real,
     [switch]$NoBrowser,
-    [switch]$NoBuild
+    [switch]$NoBuild,
+    [switch]$NoCheck
 )
 if ($Real) { $Provider = "anthropic" }
 
@@ -60,6 +62,19 @@ if (-not $NoBuild -and (Test-Path "ui\package.json")) {
 if (Test-Port 8000) {
     Write-Host "Port 8000 is already in use. Is the lab already running? (stop.bat stops it.)" -ForegroundColor Red
     exit 1
+}
+
+# The mock replies through claude -p on your Claude Code sign-in. Check that once, so an expired sign-in shows
+# here, in plain words, instead of as an error on your first message (a few seconds and a little of your plan)
+if ($Provider -eq "mock" -and -not $NoCheck) {
+    Write-Host "Checking claude -p (one small call; -NoCheck skips this)..."
+    $said = & $python -m harness.core.mock_server --check | Out-String  # (it prints its result, also on failure)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host $said.Trim() -ForegroundColor Red
+        Write-Host "The mock can't reply yet. If that's about signing in: run claude once in a terminal and sign in," -ForegroundColor Yellow
+        Write-Host "then start the lab again. (Or start.bat -Provider anthropic / deepseek with an API key.)" -ForegroundColor Yellow
+        exit 1
+    }
 }
 
 # Keys saved with setx only reach windows opened afterwards; read them directly so this one works too

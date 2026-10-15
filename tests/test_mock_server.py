@@ -70,6 +70,27 @@ class ReplyShapeTests(unittest.TestCase):
         self.assertNotEqual(msg["content"][0]["id"], msg["content"][1]["id"])
 
 
+class FailureReasonTests(unittest.TestCase):
+    """F375: when claude -p fails, the learner gets its reason, not the start of its output."""
+
+    INIT = json.dumps({"type": "system", "subtype": "init", "cwd": "C:\\Users\\someone\\AppData\\Local\\Temp\\tmp1",
+                       "tools": ["StructuredOutput"], "slash_commands": ["a", "b"] * 50})
+
+    def test_the_reason_near_the_end_is_found(self):
+        said = json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "text", "text": "Failed to authenticate: OAuth session expired and could not be refreshed"}]}})
+        result = json.dumps({"type": "result", "subtype": "error", "is_error": True, "duration_ms": 10})
+        reason = mock_server.failure_reason("\n".join([self.INIT, said, result]), "")
+        self.assertEqual(reason, "Failed to authenticate: OAuth session expired and could not be refreshed")
+        self.assertNotIn("AppData", reason)
+
+    def test_a_result_message_wins_and_stderr_is_the_fallback(self):
+        result = json.dumps({"type": "result", "is_error": True, "result": "Invalid API key · Please run /login"})
+        self.assertEqual(mock_server.failure_reason(self.INIT + "\n" + result, ""), "Invalid API key · Please run /login")
+        self.assertEqual(mock_server.failure_reason("not json", "unknown option --tools"), "unknown option --tools")
+        self.assertEqual(mock_server.failure_reason("", ""), "no reason given")
+
+
 class OnlyTheHarnessMayAskTests(unittest.TestCase):
     """F387: each request spends the user's Claude Code plan, and any web page can send requests to
     127.0.0.1. So the mock answers only requests addressed to 127.0.0.1 or localhost, sent as JSON and
@@ -83,12 +104,12 @@ class OnlyTheHarnessMayAskTests(unittest.TestCase):
         self.server.shutdown()
         self.server.server_close()
 
-    def post(self, headers, body=b'{"model": "m", "max_tokens": 10, "messages": []}'):
+    def post(self, headers, body=b'{"model": "m", "max_tokens": 10, "messages": []}', length=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
         conn.putrequest("POST", "/v1/messages", skip_host=True)
         for name, value in headers.items():
             conn.putheader(name, value)
-        conn.putheader("Content-Length", str(len(body)))
+        conn.putheader("Content-Length", str(len(body)) if length is None else length)
         conn.endheaders(body)
         response = conn.getresponse()
         status, data = response.status, json.loads(response.read() or b"{}")
@@ -115,6 +136,29 @@ class OnlyTheHarnessMayAskTests(unittest.TestCase):
                     self.assertEqual(status, expected)
                     self.assertEqual(body["type"], "error")
             ask.assert_not_called()
+
+    def test_odd_requests_get_an_answer_not_a_crash(self):
+        with mock.patch.object(mock_server, "ask_claude") as ask:
+            # a key with characters outside plain ASCII: refused, not a crash in the key check
+            self.assertEqual(self.post(self.ok_headers(**{"x-api-key": "café"}))[0], 401)
+            # a size that isn't a number, or more than the mock accepts: refused before reading anything
+            self.assertEqual(self.post(self.ok_headers(), body=b"", length="lots")[0], 400)
+            self.assertEqual(self.post(self.ok_headers(), body=b"", length=str(mock_server.MAX_BODY + 1))[0], 413)
+            ask.assert_not_called()
+
+    def test_json_with_a_charset_and_a_chosen_key_are_fine(self):
+        other, key = mock_server.serve(key="chosen")  # what MOCK_KEY does for the mock you start yourself
+        try:
+            self.assertEqual(key, "chosen")
+            self.port = other.server_port
+            fake = {"text": "hello", "tool_calls": []}
+            with mock.patch.object(mock_server, "ask_claude", return_value=fake):
+                status, _ = self.post(self.ok_headers(**{"x-api-key": "chosen", "Host": f"127.0.0.1:{self.port}",
+                                                         "Content-Type": "application/json; charset=utf-8"}))
+            self.assertEqual(status, 200)
+        finally:
+            other.shutdown()
+            other.server_close()
 
     def test_the_right_request_is_answered(self):
         fake = {"text": "hello", "tool_calls": []}

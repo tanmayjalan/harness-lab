@@ -17,9 +17,9 @@ SECRET_HINTS = (".env", "secret", "password", "passwd", "credential", "id_rsa", 
 
 
 def before_tool(name, args):
-    # Example 1: never let the model read or list anything that looks like a secret,
+    # Example 1: never let the model read, list or run anything that looks like a secret,
     # even inside the workspace and even if you would click Allow by mistake.
-    if name in ("read_file", "list_files"):
+    if name in ("read_file", "list_files") or (name == "run_python" and "path" in args):
         path = str(args.get("path", "")).lower()
         hit = next((h for h in SECRET_HINTS if h in path), None)
         if hit:

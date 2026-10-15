@@ -132,7 +132,9 @@ def make_client(name, base_url=None, api_key=None):
             f"{p['label']} needs {p['key_env']} set. In PowerShell run:\n"
             f'  setx {p["key_env"]} "<your key>"'
         )
-    key = api_key or (get_key(p["key_env"]) if p["key_env"] else "mock")
+    # The mock checks a key too: the one mock_server.serve made (api_key), or MOCK_KEY for a mock you
+    # started yourself with that variable set
+    key = api_key or (get_key(p["key_env"]) if p["key_env"] else os.environ.get("MOCK_KEY") or "no-key-given")
     # No quiet retries in the SDK: the loop tries again itself, so you see each retry (loop.retry_reason).
     # (Summarising and the eval judge ask for quiet retries for their own calls: with_quiet_retries.)
     return anthropic.Anthropic(api_key=key, base_url=base_url or p["base_url"], max_retries=0)
@@ -151,6 +153,13 @@ def plain_error(text):
     if "claude was not found" in t or "claude: command not found" in t:
         return ("The mock could not start claude -p. Install Claude Code and sign in "
                 "(run claude once in a terminal), then try again.")
+    # claude -p's own sign-in failing (checked before the API-key rule: the mock needs no API key)
+    if "failed to authenticate" in t or "oauth" in t or "session expired" in t or "please run /login" in t:
+        return ("Claude Code isn't signed in (or its sign-in has expired), so the mock can't get a reply. "
+                "Run claude once in a terminal, sign in, then try again.")
+    if "for this mock server" in t:  # the mock refused the request itself: its key didn't match (MOCK_KEY)
+        return ("The mock refused the request: the key didn't match. If you started the mock yourself, set "
+                "MOCK_KEY to the key it printed; the lab's own mock needs nothing.")
     if "authentication" in t or "invalid api key" in t or "invalid x-api-key" in t or "error code: 401" in t:
         return ("The provider rejected the API key. Check ANTHROPIC_API_KEY or DEEPSEEK_API_KEY "
                 "(setx NAME \"key\" in PowerShell), then try again.")
