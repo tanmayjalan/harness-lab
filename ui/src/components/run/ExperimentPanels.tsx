@@ -2,9 +2,10 @@
 // moment: a one-line header at the top; the guess and "where to look" just above the message box
 // (before you send and while it runs); and what it showed, right under the answer.
 import { Callout, chipClass, IconButton, RadioRow } from '../ui'
-import { FlaskConical, Lightbulb, Undo2, X } from 'lucide-react'
+import { ArrowRight, FlaskConical, Lightbulb, Undo2, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { cannotShow, experimentDone, findExperiment, type Experiment } from '../../learn/experiments'
+import { cannotShow, experimentDone, findExperiment, nextExperiment, type Experiment } from '../../learn/experiments'
+import { newConversation } from '../../store/selectors'
 import { putBack } from '../../learn/setup'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
@@ -111,7 +112,25 @@ export function ExperimentReveal({ model }: { model: RunModel }) {
       <p className="flex gap-1.5"><Lightbulb className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
         <span><span className="font-medium">What it showed:</span> {x.takeaway}</span></p>
       <p><span className="font-medium">Try next:</span> <TryNext x={x} /></p>
+      <NextOne x={x} />
     </Callout>
+  )
+}
+
+// F407: on to the next experiment not done yet, in a new conversation (as the Experiments dialog does)
+function NextOne({ x }: { x: Experiment }) {
+  const done = usePrefs((s) => s.experimentsDone)
+  const provider = useCurrentProvider()
+  const next = nextExperiment(done, x.id, provider)
+  if (!next) return null
+  return (
+    <p className="pt-1">
+      <button type="button" data-testid="experiment-next"
+        onClick={() => void askThenPick(next, () => newConversation())}
+        className="inline-flex items-center gap-1 rounded border border-accent/40 bg-panel px-2 py-0.5 font-medium text-accent hover:border-accent">
+        Next: {next.title} <ArrowRight className="size-3.5" aria-hidden />
+      </button>
+    </p>
   )
 }
 

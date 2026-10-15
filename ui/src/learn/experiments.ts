@@ -1,8 +1,9 @@
-// The starting points on the empty screen, in the order they teach. Each one is a message to
-// send, the idea it shows, where to look while it runs, what it means, and what to try next.
+// The starting points on the empty screen. Each one is a message to send, the idea it shows, where
+// to look while it runs, what it means, and what to try next. EXPERIMENTS is in the order they teach:
+// tier by tier (GROUPS), and within a tier in the order written here.
 import type { SettingsChange } from '../api/types'
 import type { Run, RunModel } from '../model/derive'
-import type { ConceptKey, Group } from './concepts'
+import { GROUPS, type ConceptKey, type Group } from './concepts'
 import type { InspectorTab } from '../store/ui'
 
 export type Experiment = {
@@ -32,7 +33,7 @@ export type Prediction = { question: string; options: string[]; actual: (m: RunM
 const callsOf = (run: Run) => run.callIds.length
 const toolsOf = (m: RunModel, run: Run) => run.callIds.flatMap((id) => m.calls[id].toolIds.map((t) => m.tools[t])).filter(Boolean)
 
-export const EXPERIMENTS: Experiment[] = [
+const WRITTEN: Experiment[] = [
   {
     id: 'loop', tier: 'The loop', concept: 'loop',
     predict: {
@@ -369,6 +370,15 @@ export const EXPERIMENTS: Experiment[] = [
     tryNext: 'Settings → Tools lists them under "From MCP: text-tools".',
   },
 ]
+
+// F408: tier by tier, so the welcome page's next three and the quiz follow the tiers (a stable sort)
+export const EXPERIMENTS: Experiment[] = [...WRITTEN].sort((a, b) => GROUPS.indexOf(a.tier) - GROUPS.indexOf(b.tier))
+
+// F407: the next one to do after `current`: the first not done yet, in teaching order, that the
+// provider in use can show (null when none is left)
+export function nextExperiment(done: string[], current: string | null, provider: string | null): Experiment | null {
+  return EXPERIMENTS.find((x) => x.id !== current && !done.includes(x.id) && !cannotShow(x, provider)) ?? null
+}
 
 // Ran to the end, on a provider that can show what it is about (a stopped or failed run, or
 // caching on the mock, doesn't count)
