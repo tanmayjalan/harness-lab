@@ -18,6 +18,7 @@ import toolTurn from './test/fixtures/tool_turn.json'
 import stopped from './test/fixtures/stopped.json'
 import failed from './test/fixtures/error.json'
 import answer from './test/fixtures/answer.json'
+import declined from './test/fixtures/approval_declined.json'
 
 const events = (x: unknown) => x as HarnessEvent[]
 const announced = () => document.querySelector('[data-announcer]')?.textContent?.replace(/​/g, '') ?? ''
@@ -92,9 +93,10 @@ describe('F427: explanations waiting their turn', () => {
 describe('F428: what is read out while and after a message runs', () => {
   const view = (start: unknown[]) => {
     useSession.setState({ conversation: 'c1', derived: deriveRuns(events(start)), loaded: true, running: true, origin: null, frozen: false })
-    render(<RunView composerRef={{ current: null }} />)
+    render(<><RunView composerRef={{ current: null }} /><Announcer /></>)
   }
-  const region = () => document.querySelector('.sr-only[aria-live]:not([data-announcer])')!.textContent!.replace(/​/g, '')
+  // RunView speaks through the page's Announcer, which is outside the chat (so heard while the chat is hidden)
+  const region = announced
 
   it('a stopped message is announced', () => {
     const all = stopped as unknown[]
@@ -118,6 +120,16 @@ describe('F428: what is read out while and after a message runs', () => {
     expect(region()).toBe('Call 1: asked for 2 tools.')
     act(() => useSession.setState({ derived: deriveRuns(events(all)), running: false }))
     expect(region()).toBe('Reply received (3 calls). Experiment Watch the loop. You guessed 2; it was 3. What it showed is under the reply.')
+  })
+
+  it('calls are said in every conversation, not only the first (call ids start again in each)', () => {
+    const all = toolTurn as unknown[]
+    view(all.slice(0, 2))
+    act(() => useSession.setState({ derived: deriveRuns(events(all.slice(0, 3))) }))
+    act(() => useSession.setState({ derived: deriveRuns(events(all)), running: false }))
+    act(() => useSession.setState({ conversation: 'c2', derived: deriveRuns(events(all.slice(0, 2))), running: true }))
+    act(() => useSession.setState({ derived: deriveRuns(events(all.slice(0, 3))) }))
+    expect(region()).toBe('Call 1: asked for 2 tools.')
   })
 
   it('a failure is not said twice: its own alert reads it out', () => {
@@ -148,6 +160,34 @@ describe('F429: the narrow Inspect view and back', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('F429: what happens in the chat while Inspect is showing', () => {
+  const narrowPage = (start: unknown[]) => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} }))
+    vi.spyOn(api, 'events').mockReturnValue(new Promise(() => {}))
+    useSession.setState({ conversation: 'c1', derived: deriveRuns(events(start)), loaded: true, running: true, origin: null, frozen: false })
+    render(<App />)
+    act(() => useUi.getState().setMobilePane('inspect'))
+  }
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('a failure is read out though the chat (and its alert) is hidden', () => {
+    const all = failed as unknown[]
+    narrowPage(all.slice(0, 2))
+    act(() => useSession.setState({ derived: deriveRuns(events(all)), running: false }))
+    expect(announced()).toMatch(/^The model call failed\. Could not reach/)
+  })
+
+  it('an approval brings the chat back, reachable, with focus on the panel', async () => {
+    const all = declined as unknown[]
+    narrowPage(all.slice(0, 4))
+    act(() => useSession.setState({ derived: deriveRuns(events(all.slice(0, 5))) }))
+    expect(useUi.getState().mobilePane).toBe('chat')
+    const panel = screen.getByRole('group', { name: 'The harness is waiting for you' })
+    expect(panel.closest('[inert]')).toBeNull()
+    await waitFor(() => expect(panel.contains(document.activeElement)).toBe(true))
   })
 })
 
