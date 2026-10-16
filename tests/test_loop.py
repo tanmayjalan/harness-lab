@@ -257,6 +257,34 @@ class HarnessTests(unittest.TestCase):
         self.assertNotIn("output_config", seen[1])
         self.assertGreater(seen[1]["max_tokens"], 3000)  # the budget comes out of max_tokens
 
+    def test_thinking_off_out_loud_sends_disabled(self):
+        # gemma4 in Ollama thinks unless told not to: with thinking off, the local servers are told
+        seen = []
+        client = FakeClient(reply("end_turn", text("ok")))
+        client.create = lambda **kw: (seen.append(kw), client.replies.pop(0))[1]
+        self.run_agent(client, thinking={"style": "off"})
+        self.assertEqual(seen[0]["thinking"], {"type": "disabled"})
+
+    def test_a_prompt_the_server_cut_is_noticed(self):
+        request = {"system": "s" * 4000, "tools": [], "messages": [{"role": "user", "content": "x" * 8000}]}  # ~3,000 tokens
+        cut = loop.prompt_cut(request, NS(input_tokens=1200, cache_read_input_tokens=0, cache_creation_input_tokens=None))
+        self.assertEqual(cut["read"], 1200)
+        self.assertGreater(cut["sent_about"], 2900)
+        # a count near the guess, cached tokens included, is not a cut; nor is a small request, or no count at all
+        self.assertIsNone(loop.prompt_cut(request, NS(input_tokens=200, cache_read_input_tokens=2600, cache_creation_input_tokens=0)))
+        self.assertIsNone(loop.prompt_cut({"messages": [{"role": "user", "content": "hi"}]}, NS(input_tokens=1)))
+        self.assertIsNone(loop.prompt_cut(request, None))
+
+    def test_the_response_event_says_when_the_prompt_was_cut(self):
+        events = []
+        client = FakeClient(reply("end_turn", text("ok")))
+        big = "word " * 3000  # ~15,000 characters, about 3,750 tokens
+        client.replies[0].usage = NS(input_tokens=900, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+        loop.agent([{"role": "user", "content": big}], client, confirm=lambda *a: True,
+                   on_event=lambda kind, **d: events.append((kind, d)))
+        [response] = [d for kind, d in events if kind == "response"]
+        self.assertEqual(response["prompt_cut"]["read"], 900)
+
     def test_adaptive_thinking_sends_an_effort_not_a_budget(self):
         seen = []
         client = FakeClient(reply("end_turn", text("ok")))

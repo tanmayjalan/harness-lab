@@ -406,6 +406,7 @@ function thinkingLabel(r: RequestEvent, thought: boolean) {
   const t = sentThinking(r)
   // Some models (Opus 5.5) think whatever is asked, so say what came back, not only what was asked for
   if (!t) return thought ? 'not asked for, but the model thought anyway' : 'not asked for'
+  if (t.type === 'disabled') return thought ? 'turned off, but the model thought anyway' : 'turned off (thinking: disabled)'
   if (t.type === 'adaptive') return `adaptive, effort ${r.output_config?.effort ?? 'medium'}`
   return `on, up to ${count(t.budget_tokens)} tokens`
 }

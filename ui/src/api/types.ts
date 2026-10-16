@@ -29,6 +29,7 @@ export type Limits = { max_tokens: number; max_turns: number }
 export type Thinking = { enabled: boolean; budget: number; effort?: Effort }
 // What a request actually sent for thinking: a budget, or adaptive (with an effort in output_config)
 export type SentThinking = { type: 'enabled'; budget_tokens: number } | { type: 'adaptive'; display?: string }
+  | { type: 'disabled' } // turned off out loud, for models that think unless told not to (gemma4 in Ollama)
 // unattended: it needed your OK and nobody could be asked (Compare, Re-run, evals, helpers)
 export type Outcome = 'ran' | 'error' | 'declined' | 'blocked' | 'unattended' | 'hook_blocked' | 'not_run'
 
@@ -115,7 +116,10 @@ export type ResponseEvent = Base & {
   usage: Usage | null
   cost: number | null
   first_text?: number // when the first streamed word arrived (server time)
+  // The server read far fewer tokens than were sent: it cut the prompt to fit its window (loop.prompt_cut)
+  prompt_cut?: PromptCut | null
 }
+export type PromptCut = { read: number; sent_about: number }
 export type ToolCallEvent = Base & {
   kind: 'tool_call'
   id: string
