@@ -291,8 +291,8 @@ export const CONCEPTS = {
     plain: 'the model reasoning before it replies',
     short: 'With thinking on, the model works through the problem before it answers or asks for tools. It costs output tokens and time.',
     long: [
-      'Older models and the mock take a budget: thinking: {type: "enabled", budget_tokens: 4000}. Newer models such as Opus 5.5 always think and take an effort instead (low … max): thinking: {type: "adaptive"} with output_config: {effort}.',
-      "Thinking is paid for as output, so replies are slower and more expensive, and often better on hard problems. You see a summary of it at most (the mock shows only that it thought). It stays in the history while you stay with the same model.",
+      'Older models and the mock take a budget: thinking: {type: "enabled", budget_tokens: 4000}. Newer models such as Opus 5.5 always think and take an effort instead (low … max): thinking: {type: "adaptive"} with output_config: {effort}. Some open models (gemma4 in Ollama) think unless told not to, so with thinking off the harness sends thinking: {type: "disabled"} to your own server.',
+      "Thinking is paid for as output, so replies are slower and more expensive, and often better on hard problems. How much of it you can read depends on the model: Claude returns a summary at most, the mock only that it thought, and open models on your own server (Ollama, LM Studio) their whole reasoning, word for word. It stays in the history while you stay with the same model.",
     ],
   },
   switch: {

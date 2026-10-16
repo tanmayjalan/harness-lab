@@ -50,7 +50,7 @@ def setup(name, model, settings, *, client, base_tools=tools.TOOLS, default_perm
             "hooks": hooks_file.load() if use_hooks else None,
             "cost": lambda usage, n=name, m=model: providers.cost(n, usage, m),
             "history": history, "prepare": prepare,
-            "thinking": lab_settings.thinking_spec(settings, providers.thinking_style(name)),
+            "thinking": lab_settings.thinking_spec(settings, providers.thinking_style(name), providers.is_local(name)),
             "cache": lab_settings.caching(settings), "allow_ask": allow_ask,
             "max_tokens": max_tokens, "max_turns": max_turns,
             "at_once": None if may is None else (lambda tool: may(tool) and not is_mcp(tool)),

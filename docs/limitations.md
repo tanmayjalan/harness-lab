@@ -26,8 +26,13 @@ Ollama and LM Studio answer the same requests, but a small open model isn't Clau
 - **Thinking:** sent as a budget, but Ollama doesn't hold the model to it, and a model that can't think may
   refuse the call.
 - **Token counts** come from the server: Ollama's are approximate. There's no cost: it runs on your machine.
-- **The context window** is whatever the server gives the model, often much smaller than Claude's, and some
-  servers cut a long conversation without saying so.
+- **The context window** is whatever the server gives the model, often much smaller than Claude's: Ollama gives
+  only 4,096 tokens on a computer without its own graphics card. A server can cut a prompt that doesn't fit with
+  no error; the only sign is the token count it reports, so the page marks a call whose count is under half of
+  what was sent ("prompt cut by the server"). See [Getting started](getting-started.md#models-on-your-own-computer)
+  for `OLLAMA_CONTEXT_LENGTH`.
+- **Thinking off** is sent as `thinking: {type: "disabled"}` to your own server, because some models (gemma4)
+  think unless told not to. With thinking on, you see the model's whole reasoning, not a summary.
 - Tried live with Ollama only; LM Studio and other servers are covered by offline tests with a stand-in server.
 
 ## Not tried live

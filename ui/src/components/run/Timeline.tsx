@@ -19,6 +19,7 @@ import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { inspectCall } from '../../store/selectors'
 import { ONE_COLUMN } from '../../lib/layout'
+import { promptCutWords } from '../../model/story'
 import { providerName } from '../composer/providerWords'
 import { storyNumbers, storySteps } from '../../model/story'
 import { StoryRail, Takeaway } from './Story'
@@ -271,6 +272,7 @@ function RunBody({ run, model, first, inspectedCallId, selectedTool, live, activ
             // picking a call is what opens the Inspector, and focus goes there (on a narrow screen, its own view)
             onClick={() => inspectCall(call.id, { focus: true })} />
           {first.history === call.id && <Explain concept="history" quiet />}
+          {call.promptCut && <Callout tone="warn" size="sm">{promptCutWords(call.promptCut)}</Callout>}
           {first.retry === call.id && <Explain concept="retry" quiet />}
           {first.tools_at_once === call.id && <Explain concept="tools_at_once" quiet />}
           {first.trimming === call.id && <Explain concept="trimming" quiet />}
@@ -388,6 +390,11 @@ function CallDivider({ call, selected, onClick, multi, hint }: DividerProps) {
         {!!call.retries?.length && (
           <span className={cn(SEP, 'text-warn')} title={`The service was busy or briefly down: the harness waited and sent the same request again${call.retries.some((r) => r.simulated) ? ' (the practice switch)' : ''}`}>
             tried again ×{call.retries.length}
+          </span>
+        )}
+        {call.promptCut && (
+          <span className={cn(SEP, 'text-warn')} title={promptCutWords(call.promptCut)}>
+            prompt cut by the server
           </span>
         )}
         {call.seconds != null && <span className={SEP}>{seconds(call.seconds)}</span>}
