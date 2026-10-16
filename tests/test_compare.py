@@ -22,11 +22,14 @@ class ScriptedClient:
         self.replies = list(replies)
         self.delay = delay
         self.systems = []
+        self.busy = []  # (start, end) of each call, to see whether two sides overlapped
         self.messages = self
 
     def create(self, **kwargs):
         self.systems.append(kwargs["system"])
+        start = time.monotonic()
         time.sleep(self.delay)
+        self.busy.append((start, time.monotonic()))
         return self.replies.pop(0)
 
 
@@ -46,9 +49,11 @@ class CompareTests(unittest.TestCase):
     def test_both_sides_run_at_the_same_time(self):
         a = ScriptedClient(answer("from A"), delay=0.5)
         b = ScriptedClient(answer("from B", {"input_tokens": 100, "output_tokens": 10}), delay=0.5)
-        started = time.time()
         results = compare.compare([side("A", a), side("B", b, cost=lambda u: 0.01)], "hi")
-        self.assertLess(time.time() - started, 0.9)   # in parallel, not 1s one after the other
+        # In parallel: each side's call was still running when the other's began. (Not a stopwatch: a slow CI
+        # machine can take seconds to start the threads, which says nothing about whether they overlapped.)
+        [(a_start, a_end)], [(b_start, b_end)] = a.busy, b.busy
+        self.assertTrue(a_start < b_end and b_start < a_end, (a.busy, b.busy))
         self.assertEqual([r["answer"] for r in results], ["from A", "from B"])
         self.assertEqual((results[1]["tokens_read"], results[1]["tokens_written"], results[1]["cost"]), (100, 10, 0.01))
         self.assertIsNone(results[0]["cost"])
