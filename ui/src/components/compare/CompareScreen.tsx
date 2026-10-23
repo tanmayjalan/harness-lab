@@ -27,16 +27,25 @@ export function CompareScreen() {
   // The question came from a conversation: the messages before it won't be sent (F269)
   const [afterHistory, setAfterHistory] = useState(false)
   const addButton = useRef<HTMLButtonElement>(null)
-  // Where focus goes once the button you pressed is gone: a new side's name, or "Add a side" after a remove
-  const [focusAfter, setFocusAfter] = useState<null | 'added' | 'removed'>(null)
-  const lastSide = c.sides[c.sides.length - 1]?.id
+  // Where focus goes once the button you pressed is gone: a new side's name, or "Add a side" after a remove.
+  // A new object per press, so the effect runs once for each press and nothing has to be reset
+  const [focusAfter, setFocusAfter] = useState<null | { to: 'added' | 'removed' }>(null)
   useEffect(() => {
-    if (focusAfter === 'added') document.querySelector<HTMLInputElement>(`[data-side="${lastSide}"] input[data-side-name]`)?.focus()
-    if (focusAfter === 'removed') addButton.current?.focus()
-    if (focusAfter) setFocusAfter(null)
-  }, [focusAfter, lastSide])
+    if (focusAfter?.to === 'added') {
+      const sides = useCompare.getState().sides
+      document.querySelector<HTMLInputElement>(`[data-side="${sides[sides.length - 1]?.id}"] input[data-side-name]`)?.focus()
+    }
+    if (focusAfter?.to === 'removed') addButton.current?.focus()
+  }, [focusAfter])
 
   useEffect(() => { void useCompare.getState().loadHistory() }, [])
+
+  // A question from the chat says whether messages came before it
+  const [seenDraft, setSeenDraft] = useState<typeof draft>(null)
+  if (draft?.text && draft !== seenDraft) {
+    setSeenDraft(draft)
+    setAfterHistory(!!draft.afterHistory)
+  }
 
   // "Compare this question" from the chat: side A is the model you were using, side B one change away
   useEffect(() => {
@@ -48,7 +57,6 @@ export function CompareScreen() {
     useCompare.getState().startFromChat(draft.text, { provider: current, model: currentModel }, other
       ? { provider: current, model: other }
       : { provider: current, model: currentModel, thinking: p?.thinking === 'adaptive' ? { effort: 'high' } : { budget: 4000 } })
-    setAfterHistory(!!draft.afterHistory)
     useUi.setState({ compareDraft: null })
     form.current?.scrollIntoView?.({ block: 'start' })
     question.current?.focus()
@@ -122,7 +130,7 @@ export function CompareScreen() {
               </label>
             </section>
             <div className={cn('grid gap-4', c.sides.length === 3 ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-2')}>
-              {c.sides.map((s, i) => <SideConfig key={s.id} index={i} side={s} onRemove={() => setFocusAfter('removed')} />)}
+              {c.sides.map((s, i) => <SideConfig key={s.id} index={i} side={s} onRemove={() => setFocusAfter({ to: 'removed' })} />)}
             </div>
             <AskFirstNote />
             <div className="flex flex-wrap items-center gap-2">
@@ -136,7 +144,7 @@ export function CompareScreen() {
                 {c.busy ? <Spinner /> : <Play className="size-4" />} {c.busy ? 'Running…' : c.sides.length === 2 ? 'Run both' : `Run all ${c.sides.length}`}
               </Button>
               {c.sides.length < 3 && (
-                <Button ref={addButton} onClick={() => { c.addSide(); setFocusAfter('added') }} disabled={!!c.busy}><Plus className="size-4" /> Add a side</Button>
+                <Button ref={addButton} onClick={() => { c.addSide(); setFocusAfter({ to: 'added' }) }} disabled={!!c.busy}><Plus className="size-4" /> Add a side</Button>
               )}
               <span className="text-xs text-muted">
                 {plural(c.sides.length, 'side')} × {plural(c.repeat, 'run')} = {plural(conversations, 'conversation')}, each with real

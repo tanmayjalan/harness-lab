@@ -8,6 +8,13 @@ What changed in the Harness lab, newest first.
   lists what it uses. TypeScript 7 has no API ESLint can call yet, so ESLint reads the code with Microsoft's
   TypeScript 6 package; `tsc` is still TypeScript 7.
 - Fixed a page test that could never fail: its pattern held invisible characters instead of `\b`.
+- ESLint also runs React's newer rules (the React Compiler's), and the page follows them: no state is copied
+  in an effect after drawing, no ref is read while drawing, and nothing changes once drawn. Two small timing
+  changes: the screen-reader region now updates in the same moment as the toast it reads out, and the
+  approval panel's short wait before keys count starts when the panel is on screen.
+- GitHub Actions moved to v7, and the page's packages to their latest versions (Dependabot).
+- [Development](docs/development.md#continuous-integration) lists what CI checks and how to finish a
+  Dependabot update of the page's packages (it can't rebuild the page itself).
 
 ## 0.1.0 (23 October 2026)
 

@@ -36,7 +36,9 @@ export function RunView({ composerRef, onRerun, onRewind }:
   // F405: an empty conversation (or one still loading) never sticks to the bottom: its page grows as it
   // loads, and following that growth would hide the heading
   const hasRuns = useRef(false)
-  hasRuns.current = loaded && model.runs.length > 0
+  const runsShown = loaded && model.runs.length > 0
+  // Kept up to date before the layout effects below (they run in this order), which read it
+  useLayoutEffect(() => { hasRuns.current = runsShown }, [runsShown])
 
   // Is there anything below what you can see? Checked after every change, not only when you
   // scroll: content can shrink (the empty screen giving way to a short reply) without a scroll
@@ -104,7 +106,9 @@ export function RunView({ composerRef, onRerun, onRewind }:
   // seen running in this visit: opening a conversation full of answers says nothing
   const watched = useRef(new Set<string>())
   const last = model.runs[model.runs.length - 1]
-  if (running) watched.current.add(`${conversation}:${last && last.outcome === 'running' ? last.index : model.runs.length + 1}`)
+  const runningKey = running ? `${conversation}:${last && last.outcome === 'running' ? last.index : model.runs.length + 1}` : null
+  // (before the effect below, which reads it)
+  useEffect(() => { if (runningKey) watched.current.add(runningKey) }, [runningKey])
   // F428: and so is a message that stops (Stop, or the call limit), with an experiment's reveal in the same
   // sentence (two in a row would cut each other off). A failure only while the chat is hidden under the narrow
   // Inspect view; otherwise its own alert reads it out. All of it through the page's Announcer (say()), which

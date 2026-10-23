@@ -19,9 +19,15 @@ export function RewindDialog({ run, onClose }: { run: Run | null; onClose: () =>
   const rewound = useRef<'filled' | 'asked' | null>(null) // after a rewind: was the message put in the box?
   const seq = run?.userSeq
 
-  useEffect(() => {
-    setPreview(null) // (also on close, so opening it again never shows the last answer, even for a moment)
+  // Another message (or closing) clears the last answer, so opening it again never shows it, even for a moment
+  const [shownSeq, setShownSeq] = useState(seq)
+  if (seq !== shownSeq) {
+    setShownSeq(seq)
+    setPreview(null)
     setProblem(null)
+  }
+
+  useEffect(() => {
     if (seq === undefined) return
     let current = true
     rewound.current = null

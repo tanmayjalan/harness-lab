@@ -50,15 +50,16 @@ export function TokenChart({ points, selected, onSelect, useTokens, estimated = 
   const bar = points.length ? Math.max(4, Math.min(28, fit)) : 0
   let x = 0
   let lastRun = points[0]?.runIndex
-  const placed = points.map((p) => {
+  // (a plain loop: x runs on from bar to bar)
+  const placed: { p: SeriesPoint; x: number; h: number; hFull: number }[] = []
+  for (const p of points) {
     if (p.runIndex !== lastRun) {
       x += runGap
       lastRun = p.runIndex
     }
-    const at = x
+    placed.push({ p, x, h: Math.max(2, ((H - top - bottom) * value(p)) / max), hFull: ((H - top - bottom) * full(p)) / max })
     x += bar + gap
-    return { p, x: at, h: Math.max(2, ((H - top - bottom) * value(p)) / max), hFull: ((H - top - bottom) * full(p)) / max }
-  })
+  }
   // The ceiling's label needs room even when there are only a few bars
   const width = Math.max(x, byWindow ? 190 : 60)
   // VIZ-5: past about 50 calls the bars are at their narrowest; then the chart keeps its size and scrolls

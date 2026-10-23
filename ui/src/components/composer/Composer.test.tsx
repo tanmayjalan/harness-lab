@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as RTooltip from '@radix-ui/react-tooltip'
 import { useUi } from '../../store/ui'
@@ -34,6 +34,15 @@ describe('Composer', () => {
     useUi.getState().fillDraft('Read budget.csv')
     composer()
     expect(box().value).toBe('Read budget.csv')
+  })
+
+  it('a draft made while the box is on screen replaces what is in it, and puts you there', () => {
+    composer()
+    fireEvent.change(box(), { target: { value: 'half typed' } })
+    act(() => useUi.getState().fillDraft('Read notes.md'))
+    expect(box().value).toBe('Read notes.md')
+    expect(document.activeElement).toBe(box())
+    useUi.setState({ composerText: '' })
   })
 
   // F038: while a reply runs, Enter can't send; the hint says so

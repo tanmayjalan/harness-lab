@@ -82,8 +82,9 @@ export const Timeline = memo(function Timeline({ model, inspectedCallId, live, r
   // F322: the messages you watched while they ran (this conversation, this visit). Only a failure among them is
   // an alert; an old one is shown, not read out again every time the conversation opens
   const conversation = useSession((s) => s.conversation)
-  const watched = useRef(new Set<string>())
-  if (running) watched.current.add(`${conversation}:${last && last.outcome === 'running' ? last.index : model.runs.length + 1}`)
+  const [watched, setWatched] = useState<ReadonlySet<string>>(() => new Set())
+  const runningKey = running ? `${conversation}:${last && last.outcome === 'running' ? last.index : model.runs.length + 1}` : null
+  if (runningKey && !watched.has(runningKey)) setWatched(new Set(watched).add(runningKey))
 
   return (
     <div className="space-y-6">
@@ -101,7 +102,7 @@ export const Timeline = memo(function Timeline({ model, inspectedCallId, live, r
           <UserMessage run={run} running={running} onRerun={onRerun} onCompare={onCompare} onRewind={onRewind} />
           <RunBody run={run} model={model} first={first} inspectedCallId={inspectedCallId} selectedTool={selectedTool}
             onSelect={selectCall} live={run === last && running ? live : ''} active={run === last && running} latest={run === last}
-            justFailed={run === last && watched.current.has(`${conversation}:${run.index}`)} />
+            justFailed={run === last && watched.has(`${conversation}:${run.index}`)} />
         </div>
       ))}
       {model.switches.filter((s) => s.beforeRun > model.runs.length).map((s) => (

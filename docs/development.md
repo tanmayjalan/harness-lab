@@ -45,8 +45,31 @@ npm run build          rebuild harness/web/static
 
 ## Continuous integration
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs the Python tests and the page's type check and
-tests on Windows for every pull request and every push to `main`.
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on Windows for every pull request and every push
+to `main`:
+
+- the Python tests, and `ruff check` (mistakes such as unused imports; its settings are in `pyproject.toml`);
+- the page's type check, `npm run lint` and its tests;
+- a check that the built page in git matches `ui/`: it runs `npm run build` and fails if
+  `harness/web/static/` changes.
+
+`main` only takes changes that have passed these checks, through a pull request.
+
+**Dependabot** opens a pull request each month when a package or a GitHub Action the lab uses has a new
+version. Its updates to the page's packages fail the built-page check, because Dependabot can't run
+`npm run build`. To finish one, check out its branch, run `npm ci` and `npm run build` in `ui/`, and push the
+rebuilt `harness/web/static/`:
+
+```
+gh pr checkout <number>
+cd ui
+npm ci
+npm run build
+cd ..
+git add harness/web/static
+git commit -m "Rebuild the page for the updated packages"
+git push
+```
 
 ## Adding to the lab
 

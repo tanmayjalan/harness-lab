@@ -92,6 +92,17 @@ describe('Rewind to here', () => {
     expect(box.value).toBe(run().text)
   })
 
+  it('opening it again never shows the last answer, even for a moment', async () => {
+    const ask = vi.spyOn(api, 'rewindPreview').mockResolvedValueOnce(preview).mockReturnValueOnce(new Promise(() => {}))
+    const onClose = vi.fn()
+    const { rerender } = render(<RewindDialog run={run()} onClose={onClose} />)
+    expect(await screen.findByRole('list', { name: 'Put back as they were' })).toBeTruthy()
+    rerender(<RewindDialog run={null} onClose={onClose} />)
+    rerender(<RewindDialog run={run()} onClose={onClose} />)
+    expect(ask).toHaveBeenCalledTimes(2) // asked again, and the answer hasn't come yet
+    expect(screen.queryByRole('list', { name: 'Put back as they were' })).toBeNull()
+  })
+
   it('Cancel changes nothing', async () => {
     vi.spyOn(api, 'rewindPreview').mockResolvedValue(preview)
     const go = vi.spyOn(api, 'rewind')

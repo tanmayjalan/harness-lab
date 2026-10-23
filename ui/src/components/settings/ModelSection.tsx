@@ -108,7 +108,12 @@ function LocalServers() {
 
 function LocalServer({ p }: { p: ProviderInfo }) {
   const [url, setUrl] = useState(p.address ?? '')
-  useEffect(() => setUrl(p.address ?? ''), [p.address])
+  // A new saved address replaces what is in the box
+  const [shown, setShown] = useState(p.address)
+  if (p.address !== shown) {
+    setShown(p.address)
+    setUrl(p.address ?? '')
+  }
   const id = useId()
   const changed = url.trim() !== (p.address ?? '')
   const save = async () => {

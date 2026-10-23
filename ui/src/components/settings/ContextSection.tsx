@@ -1,5 +1,5 @@
 // Settings → Context: trimming and summarising.
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { Settings } from '../../api/types'
 import { tokens } from '../../lib/format'
 import { CONCEPTS } from '../../learn/concepts'
@@ -21,7 +21,12 @@ export function ContextSection({ settings }: { settings: Settings }) {
   const over = settings.compact.over_chars
   // The % box keeps what you type until you leave it (or press Enter); blank puts the saved value back
   const [pct, setPct] = useState(() => (window ? String(charsToPercent(over, window)) : ''))
-  useEffect(() => { if (window) setPct(String(charsToPercent(over, window))) }, [over, window])
+  // A new saved limit, or another model's window, replaces what is in the box
+  const [shown, setShown] = useState({ over, window })
+  if (shown.over !== over || shown.window !== window) {
+    setShown({ over, window })
+    if (window) setPct(String(charsToPercent(over, window)))
+  }
   const commitPct = () => {
     const n = Number(pct)
     if (!window || pct.trim() === '' || !Number.isFinite(n) || n <= 0) return setPct(window ? String(charsToPercent(over, window)) : '')

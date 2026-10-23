@@ -61,12 +61,15 @@ function Node({ name, value, depth, openDepth, comma = false, path }:
   const all = useContext(AllCtx)
   const { active, setActive } = useContext(FocusCtx)
   const branch = value !== null && typeof value === 'object'
-  const [open, setOpen] = useState(depth < openDepth)
+  // After Open all or Fold all, a line that appears later (inside one just opened) follows it too
+  const [open, setOpen] = useState(all.n ? all.open : depth < openDepth)
   const [whole, setWhole] = useState(false) // a long text shown in full
   const rowId = useId()
-  useEffect(() => {
+  const [seenAll, setSeenAll] = useState(all)
+  if (all !== seenAll) {
+    setSeenAll(all)
     if (all.n) setOpen(all.open)
-  }, [all])
+  }
   // Folded while the Tab stop was a line inside: this line takes it, so the tree keeps one
   useEffect(() => {
     if (!open && active.startsWith(`${path}/`)) setActive(path)

@@ -20,8 +20,7 @@ export default defineConfig(
     rules: {
       // `const { hooks: _, ...rest } = e` leaves a property out on purpose
       '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
-      'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      ...reactHooks.configs['recommended-latest'].rules,
     },
   },
 )

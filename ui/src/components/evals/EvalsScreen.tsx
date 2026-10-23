@@ -33,8 +33,8 @@ export function EvalsScreen() {
   const provider = info?.providers.find((p) => p.name === e.provider)
   const running = e.status.running
   // F322: a round seen running on this visit: its failure is read out at once; an older one is only shown
-  const sawRunning = useRef(false)
-  if (running) sawRunning.current = true
+  const [sawRunning, setSawRunning] = useState(false)
+  if (running && !sawRunning) setSawRunning(true)
   const known = e.cases !== null
   const stopRef = useRef<HTMLButtonElement>(null)
   // Run disables itself: focus goes to Stop, so it isn't dropped on the page
@@ -127,7 +127,7 @@ export function EvalsScreen() {
 
         {running && <Progress stopRef={stopRef} onStop={() => e.stop()} />}
         {!running && e.status.error && (
-          <Callout tone="bad" live={sawRunning.current} icon={<TriangleAlert className="size-4" />}>The last eval round failed: {e.status.error}</Callout>
+          <Callout tone="bad" live={sawRunning} icon={<TriangleAlert className="size-4" />}>The last eval round failed: {e.status.error}</Callout>
         )}
 
         {e.history.length === 0 && !running && (

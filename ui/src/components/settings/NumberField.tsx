@@ -19,7 +19,12 @@ type Props = {
 
 export function NumberField({ label, value, min, max, defaultValue, step = 1, unit, hint, className, onCommit }: Props) {
   const [text, setText] = useState(String(value))
-  useEffect(() => setText(String(value)), [value])
+  // A new saved value (saved here or elsewhere) replaces what is in the box
+  const [shown, setShown] = useState(value)
+  if (value !== shown) {
+    setShown(value)
+    setText(String(value))
+  }
   const id = useId()
   // F341: a typed number outside the range is put in range, and the hint says so for a few seconds
   const [clampNote, setClampNote] = useState('')
