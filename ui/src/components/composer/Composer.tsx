@@ -9,6 +9,7 @@ import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { toast, useUi } from '../../store/ui'
 import { destination, localDestination, modelsOf, shortLabel, switchNote, toolsTag, unusable } from './providerWords'
+import { DamagedFiles } from './DamagedFiles'
 import { HooksProblem } from './HooksProblem'
 import { Button, Kbd, Spinner, Tip } from '../ui'
 
@@ -71,6 +72,7 @@ export const Composer = forwardRef<ComposerHandle>(function Composer(_, ref) {
         <Totals />
       </div>
       <HooksProblem />
+      <DamagedFiles />
       <div className={cn('flex items-end gap-2 rounded-xl border bg-panel p-2 shadow-sm transition-colors',
         'focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20 border-line')}>
         <textarea

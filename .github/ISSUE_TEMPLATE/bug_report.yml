@@ -28,8 +28,21 @@ body:
         - mock (claude -p)
         - anthropic
         - deepseek
+        - ollama
+        - lmstudio
+        - custom
     validations:
       required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model name
+      description: The model picked in Settings → Model, if you know it (for example Sonnet, or qwen3:4b).
+  - type: input
+    id: version
+    attributes:
+      label: "Version (run `git rev-parse --short HEAD`)"
+      description: Run it in the harness-lab folder and paste what it prints. With a ZIP copy, leave this empty.
   - type: textarea
     id: setup
     attributes:

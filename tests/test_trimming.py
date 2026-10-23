@@ -10,7 +10,7 @@ import time
 import unittest
 from types import SimpleNamespace as NS
 
-from anthropic.types import TextBlock, ToolUseBlock
+from anthropic.types import TextBlock
 
 from harness.core import loop, tools
 from harness.features import lab_settings

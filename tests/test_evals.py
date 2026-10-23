@@ -521,6 +521,16 @@ class ReportTests(unittest.TestCase):
         self.assertFalse(evals.judge_is_tested(None, "mock", None))
         if evals.providers.PROVIDERS["anthropic"]["model"] == judge_model:
             cases = json.loads((paths.CONFIG / "evals.json").read_text(encoding="utf-8"))["cases"]
-            _, out = self.run_main("--provider", "anthropic", "--only", cases[0]["question"], "--judge", "mock")
+            with unittest.mock.patch.object(evals.providers, "missing_key", lambda name: None):  # (a key is set)
+                _, out = self.run_main("--provider", "anthropic", "--only", cases[0]["question"], "--judge", "mock")
             self.assertIn("the judge is the same model as the one being tested", out)
+
+    # A provider with no key is skipped with what to set, instead of running every question into the same error
+    def test_a_provider_without_its_key_is_skipped_with_what_to_set(self):
+        cases = json.loads((paths.CONFIG / "evals.json").read_text(encoding="utf-8"))["cases"]
+        with unittest.mock.patch.object(evals.providers, "missing_key",
+                                        lambda name: "ANTHROPIC_API_KEY" if name == "anthropic" else None):
+            _, out = self.run_main("--provider", "anthropic", "--only", cases[0]["question"], "--judge", "mock")
+        self.assertIn("needs ANTHROPIC_API_KEY set", out)
+        self.assertNotIn("Took", out)
 

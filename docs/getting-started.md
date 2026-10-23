@@ -1,14 +1,19 @@
 # Getting started
 
-The lab runs on Windows. You need these; `setup.bat` checks the first three:
+The lab runs on Windows only, because `setup.bat`, `start.bat` and `stop.bat` are Windows batch files that run
+PowerShell scripts, and they use the `.venv\Scripts` folder Python makes on Windows. The Python code isn't
+known to fail elsewhere, but it hasn't been tried there.
+
+You need these; `setup.bat` checks all of them except git and internet access:
 
 | What | Why |
 |---|---|
 | **Python 3.10+** | runs the harness. `setup.bat` makes the lab's own Python folder (`.venv`) and installs [`requirements.txt`](../requirements.txt) into it |
-| **Claude Code** (`claude`), installed and logged in | the default provider, the *mock*, gets its replies from `claude -p` on your Claude Code plan: no API key needed |
+| **git** | to get the code (`git clone`) and to put the sample files back after an experiment. Without it, use **Code → Download ZIP** on GitHub |
+| **Claude Code** (`claude`), installed and signed in | the default provider, the *mock*: real Claude replies, sent through Claude Code (`claude -p`) instead of the API. It uses your Claude Code plan, at no extra charge, so no API key is needed |
 | **Ollama** or **LM Studio** (optional) | free models on your own computer, instead of the mock or an API key: see [Models on your own computer](#models-on-your-own-computer) |
-| **Node.js** (optional) | only to change the web page; the built page is already in git |
-| **Internet access** to open-meteo.com | the `get_weather` tool looks the weather up there, and the first experiment uses it. `setup.bat` doesn't check this |
+| **Node.js 26 or newer** (optional) | only to change the web page; the built page is already in git |
+| **Internet access** to open-meteo.com | the `get_weather` tool looks the weather up there, and the first experiment uses it |
 
 ## Start and stop
 
@@ -18,8 +23,10 @@ The lab runs on Windows. You need these; `setup.bat` checks the first three:
 | **`start.bat`** | Starts the web page at http://127.0.0.1:8000 and opens it |
 | **`stop.bat`** | Stops the lab's servers, and nothing else (add `-List` to only see what it would stop) |
 
-Double-click them, or run them from a terminal in the Harness folder. They work even if PowerShell scripts
-are blocked on your computer. The real work is done by the matching scripts in [`scripts/`](../scripts/).
+Double-click them, or run them from a terminal in the `harness-lab` folder (the one `git clone` made). In
+PowerShell, Windows Terminal's usual shell, type `.\setup.bat`, `.\start.bat` and `.\stop.bat`: a plain
+`setup.bat` isn't found there. They work even if PowerShell scripts are blocked on your computer. The real work
+is done by the matching scripts in [`scripts/`](../scripts/).
 
 ### `setup.bat`
 
@@ -49,13 +56,21 @@ never in a file. Only the last 4 characters of a key are ever shown.
 | `-Provider anthropic` | the Anthropic API (needs `ANTHROPIC_API_KEY`, paid per use) |
 | `-Provider deepseek` | DeepSeek (needs `DEEPSEEK_API_KEY`, paid per use) |
 | `-Provider ollama` | a model in Ollama, free (also `lmstudio`, and `custom` for another server). If it isn't running, the lab starts with the mock and says why |
+| `-Real` | the same as `-Provider anthropic` |
 | `-NoBrowser` | don't open the browser |
 | `-NoBuild` | don't rebuild the page, even if `ui/` changed (see [Development](development.md#working-on-the-page)) |
 | `-NoCheck` | don't check `claude -p` before starting (the mock only) |
 | `-Fresh` | the same page at the same address, from a throwaway copy: no saved Memory, settings or conversations, and nothing you do reaches `data/`, `config/` or `workspace/`. For workshops and demos: see [Running a workshop](workshop.md) |
 
-Without `-Provider` it uses the mock: real replies from `claude -p` on your Claude Code plan, no API key
-needed. It first makes one small `claude -p` call to check that Claude Code is signed in, so a problem shows
+Run `setup.bat` before the first `start.bat`: it makes the lab's Python folder (`.venv`) and checks
+everything. Without `.venv`, `start.bat` stops and says to run `setup.bat` first.
+
+`start.bat` rebuilds the page only if you're working on it: when `ui\node_modules` exists (you ran
+`npm install` in `ui\`) and a file in `ui\` is newer than the built page.
+
+Without `-Provider` it uses the mock: real Claude replies from `claude -p`, on your Claude Code plan at no
+extra charge, with no API key. Each model call takes about 5 to 30 s, and the page shows each call as it
+happens. It first makes one small `claude -p` call to check that Claude Code is signed in, so a problem shows
 there instead of on your first message. If `start.bat` stops with a problem, its window stays open so you can
 read why. You can also switch provider, and for the mock the model (Opus, Sonnet or Haiku), in the page at any
 time; the conversation is kept.
@@ -79,7 +94,7 @@ the loop, the tools and the page are unchanged. It's free, and nothing you send 
 
 1. Install one and get a model that can use tools, for example `ollama pull qwen3:4b`. In LM Studio, download a
    model and start the server (Developer tab).
-2. Start the lab with `start.bat -Provider ollama` (or `lmstudio`), or pick it later in **Settings → Model**.
+2. Start the lab with `.\start.bat -Provider ollama` (or `lmstudio`), or pick it later in **Settings → Model**.
 
 **Settings → Model → Models on your own server** shows each server's address, its models and, if it can't be
 used, why. Change an address there if yours is different, or enter one for **Other server**: any server that takes
@@ -115,6 +130,7 @@ under each call (**Show details**).
 | "Claude Code isn't signed in (or its sign-in has expired)", or the first message fails with an error about authenticating | Open a terminal, run `claude`, type `/login` and sign in. Then run `setup.bat` (without `-Quick`) to check, and start the lab again. |
 | "The mock could not start claude -p" | Install Claude Code, run `claude` once in a terminal to sign in, then start the lab again. |
 | "Port 8000 is already in use" | The lab is probably already running: use that window, or run `stop.bat` first. |
+| "the web server did not start" | Scroll up in the same window: the Python error above that line says why. To see it on its own, run `.venv\Scripts\python -m harness.web.server` in the `harness-lab` folder. If it isn't clear what to fix, [open an issue](https://github.com/tanmayjalan/harness-lab/issues/new/choose) with that error. |
 | "The provider rejected the API key" | Check `ANTHROPIC_API_KEY` or `DEEPSEEK_API_KEY`: run `setup.bat` to test and save it. |
 | "Nothing answered at http://127.0.0.1:11434" (Ollama) or ":1234" (LM Studio) | Start Ollama (open the app, or run `ollama serve`), or in LM Studio start the server (Developer tab). Then press **Check again** in Settings → Model. |
 | "…is running but has no models" | Get one: `ollama pull qwen3:4b`, or download one in LM Studio. |

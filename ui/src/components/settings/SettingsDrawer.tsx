@@ -19,6 +19,7 @@ import { MemorySection } from './MemorySection'
 import { ToolsSection } from './ToolsSection'
 import { ContextSection } from './ContextSection'
 import { DisplaySection } from './DisplaySection'
+import { DamagedFiles } from '../composer/DamagedFiles'
 
 const SECTIONS: { id: SettingsSection; label: string; icon: ReactNode }[] = [
   { id: 'model', label: 'Model', icon: <Bot className="size-4" /> },
@@ -90,6 +91,8 @@ export function SettingsDrawer() {
               })}
             </nav>
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {/* a saved file that couldn't be read: on every section, since it can explain any setting back at its default */}
+              <DamagedFiles className="mb-3" />
               {!settings && section !== 'display' && section !== 'model' ? (
                 <div className="space-y-3"><Skeleton className="h-6 w-1/3" /><Skeleton className="h-40" /></div>
               ) : section === 'model' ? <ModelSection />

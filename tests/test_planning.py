@@ -5,7 +5,7 @@ Run:  python -m unittest -v
 import isolate  # noqa: F401  (keeps tests away from your real files)
 import unittest
 
-from harness.core import loop, tools
+from harness.core import tools
 from harness.features import planning
 
 

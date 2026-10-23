@@ -1,4 +1,5 @@
 """The Markdown files' links: every link to a file in this repo, and every #section, must lead somewhere.
+Also two facts the docs state that could drift: the file map names every Python file, and the handbook count.
 
 Run:  python -m unittest test_docs
 """
@@ -56,6 +57,29 @@ class DocLinks(unittest.TestCase):
                 elif section and dest.suffix == ".md" and section not in anchors(dest):
                     broken.append(f"{where}: no such section")
         self.assertEqual(broken, [], "\n".join(broken))
+
+    def test_the_file_map_names_every_python_file(self):
+        """How it's built promises one line per file: a new file in harness/ must get its line."""
+        text = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+        section = text.split("## What's where", 1)[1]
+        tree = re.search(r"^```\n(.*?)^```", section, re.S | re.M).group(1)
+        named = set(re.findall(r"[├└]──\s+([\w.]+\.py)\b", tree))
+        code = ROOT / "harness"
+        files = {p.name for p in code.rglob("*.py")
+                 if p.name != "__init__.py" and "static" not in p.relative_to(code).parts}
+        self.assertTrue(files, "no Python files found in harness/")
+        self.assertEqual(sorted(files - named), [], "in harness/ but not in docs/architecture.md's file map")
+
+    def test_the_handbook_count_matches_the_handbook(self):
+        """The docs say how many policies the sample handbook has; its README.md is the index, not a policy."""
+        handbook = ROOT / "workspace" / "handbook"
+        policies = len([p for p in handbook.glob("*.md") if p.name.lower() != "readme.md"])
+        stated = []
+        for rel in ("docs/learning-path.md", "docs/architecture.md", "workspace/README.txt"):
+            for count in re.findall(r"(\d+) short policies", (ROOT / rel).read_text(encoding="utf-8")):
+                stated.append((rel, int(count)))
+        self.assertTrue(stated, "no handbook count found in the docs")
+        self.assertEqual([s for s in stated if s[1] != policies], [], f"the handbook has {policies} policies")
 
     def test_anchor_matches_github(self):
         self.assertEqual(anchor("Start and stop"), "start-and-stop")

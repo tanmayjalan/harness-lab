@@ -233,11 +233,13 @@ export const useCompare = create<CompareState>((set, get) => ({
       busyText: repeat > 1
         ? `Running each side ${repeat} times: the sides at the same time, their runs one after another.${mock ? ` On the mock that takes ${mockTime(repeat)}.` : ''}`
         : `Running every side at the same time.${mock ? ` On the mock that takes ${mockTime(1)}.` : ''}` })
-    // How far each side has got, from the server, while the request runs
+    // How far each side has got, from the server, while the request runs. A check still out when the
+    // comparison ends is ignored (done), or it would bring the progress back after it was cleared
+    let done = false
     const poll = setInterval(async () => {
       try {
         const st = await api.compareStatus()
-        if (st.running && st.sides) set({ progress: st.sides.map((x, i) => ({ label: LETTERS[i], done: x.done })) })
+        if (!done && st.running && st.sides) set({ progress: st.sides.map((x, i) => ({ label: LETTERS[i], done: x.done })) })
       } catch { /* the request itself reports errors */ }
     }, 1000)
     try {
@@ -273,6 +275,7 @@ export const useCompare = create<CompareState>((set, get) => ({
     } catch (err) {
       toast({ kind: 'error', title: "Couldn't run the comparison", body: errorMessage(err) })
     } finally {
+      done = true
       clearInterval(poll)
       // F389: letting Ask-first tools run (code you haven't seen, for run_python) is for one comparison only
       set({ busy: null, progress: null, startedAt: null, allowAsk: false })

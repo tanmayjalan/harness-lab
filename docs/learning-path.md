@@ -33,5 +33,5 @@ The model's folder, [`workspace/`](../workspace/), has sample files made for the
 | `budget.csv` | "What's the total?" |
 | `scripts/totals.py` | it has a bug: with Run code on, ask the model to run it and fix it |
 | `private/.env` | **fake** secrets: the example hook blocks reading them |
-| `handbook/` | 26 short policies of a made-up company: "What's our refund policy?" |
+| `handbook/` | 25 short policies of a made-up company: "What's our refund policy?" |
 | `inbox/supplier_email.txt` | an ordinary email with an order hidden in it for the AI (prompt injection): "Summarise inbox/supplier_email.txt" |

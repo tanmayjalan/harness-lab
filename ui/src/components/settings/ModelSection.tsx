@@ -62,7 +62,7 @@ function ProviderAndModel({ current, currentModel, running }: { current: string 
           {chosen.missing_key ? missingKeyHelp(chosen.missing_key)
             : chosen.local ? localNote(chosen)
             : chosen.price ? `$${chosen.price.input} in · $${chosen.price.cached} cached · $${chosen.price.output} out, per million tokens (${chosen.price.note})`
-              : "No cost to you. Tokens and cost are estimates (about 4 characters a token, at the chosen model's price)."}
+              : "No extra charge: the mock uses your Claude Code plan. Tokens and cost are estimates (about 4 characters a token, at the chosen model's price)."}
         </p>
       )}
       {missing.map((p) => (

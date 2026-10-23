@@ -86,6 +86,8 @@ def script_text(path):
     that isn't a script, such as private/.env) is not read: the model could name any file, and its text
     would be shown and saved with the conversation before you decide. Only the start is read."""
     from harness.core import tools  # here, not at the top: tools.py imports this file
+    if not isinstance(path, str):
+        return {"error": "isn't a file path, so the harness doesn't open it"}
     if tools.outside_workspace("run_python", {"path": path}):
         return {"error": "is outside the workspace, so the harness doesn't open it"}  # shown after "The file"
     target = tools.resolve(path)
@@ -117,9 +119,13 @@ def run_python(code=None, path=None, should_stop=None):
                 raise ValueError("code is empty")
             folder = tempfile.mkdtemp(prefix="run_python-")
             script = pathlib.Path(folder) / "script.py"
-            script.write_text(code, encoding="utf-8")
+            script.write_text(code, encoding="utf-8", newline="")
         else:
-            script = tools.resolve(path)
+            tools.no_hidden_stream(path)  # (here too: the page calls run_python directly, not through run_tool)
+            script = tools.resolve(path) if isinstance(path, str) else None
+            if script is None or script.suffix.lower() != ".py":
+                # The approval card doesn't open other files (script_text), so you couldn't see what would run
+                raise ValueError(f"only a .py file can be run by its path, not {path!r}")
             if not script.is_file():
                 raise FileNotFoundError(f"no such script: {path}")
         return _run(script, tools.WORKSPACE, should_stop)

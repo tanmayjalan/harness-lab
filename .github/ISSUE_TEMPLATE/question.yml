@@ -1,0 +1,16 @@
+name: Question
+description: Ask how something in the lab works, or why it does what it does
+labels: [question]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What you'd like to know. Name the experiment, screen or file it is about, if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: What you looked at or did already (a doc page, a setting, a command), and what happened.

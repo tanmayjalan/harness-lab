@@ -1,0 +1,19 @@
+# Dependabot opens a pull request when a package or a GitHub Action the lab uses has a new version.
+# CI then runs the tests on it, so an update that breaks something shows up before it's merged.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: monthly
+    groups:
+      page-packages:   # one pull request for all of the page's packages, not one each
+        patterns: ["*"]

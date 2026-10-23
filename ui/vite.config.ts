@@ -7,7 +7,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 const target = `http://127.0.0.1:${process.env.HARNESS_PORT ?? '8000'}`
 const api = ['/info', '/events', '/profile', '/settings', '/conversations', '/chat', '/stop', '/approve',
-             '/provider', '/reset', '/compare', '/rerun', '/evals']
+             '/provider', '/local-server', '/reset', '/compare', '/rerun', '/rewind', '/evals'] // matched by how an address starts: src/api/proxy.test.ts checks
 
 export default defineConfig({
   base: '/',

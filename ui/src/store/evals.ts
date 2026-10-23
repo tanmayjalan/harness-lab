@@ -30,6 +30,7 @@ type EvalsState = {
 
 let timer: ReturnType<typeof setTimeout> | null = null
 let casesAsked = 0 // counts question-list requests, so only the newest answer is used
+let refreshAsked = 0 // the same for status checks, so only the newest one goes on asking
 
 export const useEvals = create<EvalsState>((set, get) => ({
   provider: 'mock',
@@ -50,12 +51,13 @@ export const useEvals = create<EvalsState>((set, get) => ({
   },
 
   loadCases: async () => {
+    const mine = ++casesAsked
     try {
-      const mine = ++casesAsked
       const cases = (await api.evalCases(get().only.trim())).cases
       if (mine === casesAsked) set({ cases, casesFailed: false }) // a slower, older answer doesn't overwrite a newer one
     } catch {
-      set({ cases: null, casesFailed: true }) // the page says it couldn't read them; Run still works (the server checks)
+      // the page says it couldn't read them; Run still works (the server checks). An older failure doesn't count
+      if (mine === casesAsked) set({ cases: null, casesFailed: true })
     }
   },
 
@@ -81,11 +83,16 @@ export const useEvals = create<EvalsState>((set, get) => ({
   },
 
   // Ask how it's going every second while it runs; then load the result and the history
+  // Only the newest call carries on: clearing the timer can't stop a request already out, so an older
+  // one that returns later drops its answer instead of starting a second loop
   refresh: async () => {
     if (timer) clearTimeout(timer)
+    timer = null
+    const mine = ++refreshAsked
     try {
       const wasRunning = get().status.running
       const status = await api.evalsStatus()
+      if (mine !== refreshAsked) return
       set({ status })
       if (status.running) {
         timer = setTimeout(() => void get().refresh(), 1000)
@@ -93,10 +100,11 @@ export const useEvals = create<EvalsState>((set, get) => ({
       }
       // The latest round is shown when it has just finished or nothing is shown yet: never over one you picked
       if (status.result && (wasRunning || !get().viewing)) set({ viewing: status.result, ...(wasRunning ? { focusResults: true } : {}) })
-      set({ history: (await api.evalsHistory()).runs })
+      const runs = (await api.evalsHistory()).runs
+      if (mine === refreshAsked) set({ history: runs })
     } catch {
       // the server may be restarting: ask again shortly (the connection banner says if it's down)
-      timer = setTimeout(() => void get().refresh(), 2000)
+      if (mine === refreshAsked) timer = setTimeout(() => void get().refresh(), 2000)
     }
   },
 

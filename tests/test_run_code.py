@@ -148,6 +148,26 @@ class RunPythonTests(Workspace):
         with self.assertRaises(FileNotFoundError):
             run_code.run_python(path="scripts/missing.py")
 
+    # The approval card won't open a file that isn't a .py script, so you can't see what it says: it must
+    # not run either, even when you click Allow
+    def test_a_file_that_isnt_a_py_script_never_runs(self):
+        marker = self.work / "ran.txt"
+        (self.work / "notes.txt").write_text(f"open({str(marker)!r}, 'w').write('ran')", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, r"\.py"):
+            run_code.run_python(path="notes.txt")
+        block = NS(id="t1", name="run_python", input={"path": "notes.txt"})
+        result, outcome = loop._run_one(block, lambda name: "ask", lambda q: "y",
+                                        lambda n, a: tools.run_tool(n, a))
+        self.assertEqual(outcome, "error")
+        self.assertIn(".py", result["content"])
+        self.assertFalse(marker.exists())
+
+    # The page runs run_python here directly (so Stop can end it), not through tools.run_tool: the check for a
+    # hidden extra part of a file ("notes.txt:s.py", which Rewind can't see) must be here too
+    def test_a_hidden_stream_never_runs(self):
+        with self.assertRaisesRegex(ValueError, "':'"):
+            run_code.run_python(path="notes.txt:s.py")
+
     def test_a_path_outside_the_workspace_counts_as_outside(self):
         self.assertFalse(tools.outside_workspace("run_python", {"path": "scripts/hi.py"}))
         self.assertTrue(tools.outside_workspace("run_python", {"path": "../elsewhere.py"}))

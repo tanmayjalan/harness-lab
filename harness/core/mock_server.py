@@ -258,7 +258,12 @@ class Handler(BaseHTTPRequestHandler):
         refused = self.refusal()
         if refused:
             return self.send_json(*refused)
-        request = json.loads(body)
+        try:
+            request = json.loads(body)
+        except ValueError:
+            request = None
+        if not isinstance(request, dict):
+            return self.send_json(400, error("invalid_request_error", "the request isn't a JSON object"))
         if request.get("stream"):
             return self.send_json(400, error("invalid_request_error", "mock server does not support streaming"))
 

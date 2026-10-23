@@ -270,7 +270,9 @@ export type Settings = {
   apply: Apply
   limits: Limits
   mcp_problems: string[]
-  hooks: { file: string; functions: string[]; problem: string | null }
+  // saved files that couldn't be read, each a sentence saying where the file was moved (usually empty; older servers: missing)
+  damaged?: string[]
+  hooks:{ file: string; functions: string[]; problem: string | null }
   file: string
   // the skill files found, and exactly what's added to the prompt with skills on (older servers: missing)
   skills?: { setting: SkillsSetting; found: { name: string; description: string }[]; addition: string; folder: string }

@@ -266,14 +266,18 @@ export function ResizeHandle() {
   const start = (e: React.PointerEvent) => {
     e.preventDefault()
     const move = (ev: PointerEvent) => set(window.innerWidth - ev.clientX)
+    // Letting go ends the drag; so does pointercancel (the browser taking over a touch drag to scroll, say),
+    // or the listeners would stay and the resize cursor would stick
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
       document.body.style.cursor = ''
     }
     document.body.style.cursor = 'col-resize'
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
   }
   const width = shownInspectorWidth(usePrefs((s) => s.inspectorWidth), sidebarOpen, viewport)
   return (

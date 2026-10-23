@@ -16,6 +16,7 @@ import hashlib
 import os
 import pathlib
 import re
+import stat
 import uuid
 
 from harness import paths
@@ -28,13 +29,23 @@ SKIP_FOLDERS = {"__pycache__"}  # Python's own caches: made again whenever they'
 SKIP_SUFFIXES = {".pyc"}
 
 
+LINK_TAGS = (stat.IO_REPARSE_TAG_SYMLINK, stat.IO_REPARSE_TAG_MOUNT_POINT)  # Windows' marks for a link, a junction
+
+
 def _is_link(path):
-    """A shortcut to somewhere else (a symbolic link, or a Windows junction): never followed or changed."""
-    return path.is_symlink() or (hasattr(os.path, "isjunction") and os.path.isjunction(path))
+    """A shortcut to somewhere else (a symbolic link, or a Windows junction): never followed or changed.
+    Read from the file system's own mark, so it works on Python 3.10 too, which has no os.path.isjunction and
+    doesn't call a junction a link."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISLNK(st.st_mode) or getattr(st, "st_reparse_tag", 0) in LINK_TAGS
 
 
-def _files(workspace):
-    """Each file to keep, as (relative path with / separators, full path), in a fixed order."""
+def files(workspace):
+    """Each file to keep, as (relative path with / separators, full path), in a fixed order. Shortcuts
+    (links and junctions) are skipped, so nothing outside the workspace is reached. search_files uses it too."""
     root = pathlib.Path(workspace)
     for folder, dirs, names in os.walk(root):  # (os.walk doesn't go into linked folders)
         here = pathlib.Path(folder)
@@ -77,7 +88,7 @@ def _keep(digest, data):
 def _scan(workspace, store, capped):
     """The manifest of the workspace as it is now. With `capped`, None once it passes either limit."""
     manifest, count, size = {}, 0, 0
-    for rel, path in _files(workspace):
+    for rel, path in files(workspace):
         try:
             count += 1
             size += path.stat().st_size

@@ -8,7 +8,9 @@ import { PRESETS, useCompare } from '../../store/compare'
 import { useServer } from '../../store/server'
 import { useSession } from '../../store/session'
 import { useUi } from '../../store/ui'
-import { CompareScreen, letThroughWords, MiniChart } from './CompareScreen'
+import { CompareScreen } from './CompareScreen'
+import { letThroughWords } from './letThrough'
+import { MiniChart } from './MiniChart'
 
 const info = {
   provider: 'mock', model: 'claude-opus-5-5', mode: 'Mock', folder: 'workspace', max_turns: 20,
@@ -108,6 +110,27 @@ describe('the Compare store', () => {
     useCompare.getState().removeSide(2)
     await act(async () => { resolve({ id: 'x', results: [side(), side(), side()], profile_included: false }); await running })
     expect(useCompare.getState().results?.sides).toHaveLength(3)
+  })
+
+  // A progress check that comes back after the comparison has ended must not bring the progress back
+  it('a late progress check after the end leaves no progress showing', async () => {
+    vi.useFakeTimers()
+    try {
+      let finish!: (v: unknown) => void
+      let late!: (v: unknown) => void
+      vi.spyOn(api, 'compare').mockReturnValue(new Promise((r) => { finish = r }) as never)
+      vi.spyOn(api, 'compareStatus').mockReturnValue(new Promise((r) => { late = r }) as never)
+      vi.spyOn(api, 'conversations').mockResolvedValue({ current: '', items: [] } as never)
+      useCompare.setState({ text: 'q' })
+      const running = useCompare.getState().run()
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000) }) // a progress check goes out
+      await act(async () => { finish({ id: 'x', results: [side(), side()], profile_included: false }); await running })
+      expect(useCompare.getState().progress).toBeNull()
+      await act(async () => { late({ running: true, sides: [{ done: 1 }, { done: 1 }] }); await vi.advanceTimersByTimeAsync(0) })
+      expect(useCompare.getState().progress).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

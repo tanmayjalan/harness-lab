@@ -243,7 +243,7 @@ describe('third pass wording', () => {
 
   it('F350 F354 F358 F345 F348 F364: Settings → Model', () => {
     wrap(<ModelSection />)
-    expect(text()).toMatch(/No cost to you\. Tokens and cost are estimates \(about 4 characters a token, at the chosen model's price\)\./)
+    expect(text()).toMatch(/No extra charge: the mock uses your Claude Code plan\. Tokens and cost are estimates \(about 4 characters a token, at the chosen model's price\)\./)
     expect(text()).not.toMatch(/doesn't report token counts/)
     expect(text()).toMatch(/Which model answers, how it thinks and caches, and the limits on each message\./)
     expect(text()).toMatch(/up to 12 calls per message/) // the saved limit, not the server's start-up value
@@ -406,7 +406,9 @@ describe('third pass wording', () => {
     expect(cannotShow(findExperiment('trim')!, 'mock')).toBe(false)
     expect(cannotShow(findExperiment('cache')!, 'mock')).toBe(true)
     wrap(<><EmptyState disabled={false} /><ExperimentGrid disabled={false} onPick={() => {}} /></>) // the page, and the full list under Experiments
-    expect(text()).toMatch(/You're on the mock \(Claude Code's claude -p\): free, but each model call takes about 5 to 30 s\./)
+    expect(text()).toMatch(/You're on the mock \(Claude Code's claude -p\): real Claude replies through your Claude Code plan, at no extra charge\. Each model call takes about 5 to 30 s\./)
+    // the mock uses your paid Claude Code plan: never "free" or "no cost"
+    for (const words of [CONCEPTS.mock.plain, CONCEPTS.mock.short, ...CONCEPTS.mock.long]) expect(words).not.toMatch(/\bfree\b|no cost/i)
     expect(text()).toMatch(/Idea: a cap on calls per message \(call limit \(max_turns\)\)/)
     expect(screen.getByRole('button', { name: /Long reading, short memory/ }).textContent).toMatch(/needs the mock or DeepSeek/)
     expect(screen.getByRole('button', { name: /Long reading, short memory/ })).toBeEnabled()
@@ -442,6 +444,7 @@ describe('third pass wording', () => {
   it('F370 F371: the glossary shows the long text under "More", in teaching order, with the new entries', () => {
     useUi.setState({ helpOpen: true })
     wrap(<HelpSheet />)
+    expect(document.getElementById('mock-limits')!.textContent).toMatch(/on your Claude Code plan: no API key, no extra charge\./)
     const history = document.getElementById('term-history')!
     expect(history.textContent).toContain(CONCEPTS.history.short)
     expect(history.querySelector('details summary')!.textContent).toBe('More')

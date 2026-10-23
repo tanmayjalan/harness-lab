@@ -14,14 +14,13 @@ how many at the start.
 
 Where it still differs from the page:
 - the model is always the provider's default one (the page lets you pick another);
-- "From your next conversation" isn't followed: every message uses the settings as they are now;
 - it prints each tool once, after its result is in, with what your hooks did to it, but not the requests.
 """
 import argparse
 import re
 
 from harness.core import loop, providers, tools
-from harness.features import context, hooks, lab_settings, mcp_client, memory, skills, subagents, workflow
+from harness.features import context, lab_settings, mcp_client, memory, message_setup, skills, subagents, workflow
 from harness.features import tool_search
 from harness.words import plural
 
@@ -89,78 +88,72 @@ def base_tools(mcp=None):
     return list(tools.TOOLS) + (list(mcp.tools) if mcp else [])
 
 
-def described_tools(settings, base, found):
-    """The tools offered, with your edits (run_python only with Run code on), plus load_skill if skills need it."""
-    described = lab_settings.offered_tools(settings, base)
-    if skills.offers_tool(settings.get("skills"), found):
-        described = [*described, skills.SKILL_TOOL]
-    return described
-
-
 def first_call_tools(settings, base, found=None):
-    """What a message's first call offers: the tools above, plus the 40 office tools or find_tool if they're on."""
-    described = described_tools(settings, base, skills.load_all() if found is None else found)
+    """What a message's first call offers: your tools as your settings describe them, plus the 40 office tools
+    or find_tool if they're on."""
+    described = message_setup.offered_tools(settings, base, skills.load_all() if found is None else found)
     extra = lab_settings.extra_tools(settings)
     if extra and not lab_settings.workflow(settings):
         return tool_search.start(described, extra)
     return described
 
 
-def one_message(messages, client, provider, model, settings, facts, confirm=input, say=print, mcp=None):
+def one_message(messages, client, provider, model, settings, facts, confirm=input, say=print, mcp=None, start=None):
     """Answer the last message in `messages`, with these settings, the way the web page does. Returns
-    the answer, or the error in plain words. `mcp`: tools from MCP servers (features/mcp_client.py), or None."""
-    system = memory.system_prompt(lab_settings.system_prompt(settings, loop.SYSTEM), facts)
-    found = skills.load_all()
-    system = skills.system_prompt(system, settings.get("skills"), found)
-    described = described_tools(settings, base_tools(mcp), found)
-    offered = providers.tools_for(provider, described)
-    my_hooks = hooks.load()
-    if my_hooks.problem:
-        say(f"[my_hooks.py has a problem, so no hooks this time: {my_hooks.problem}]")
+    the answer, or the error in plain words. `mcp`: tools from MCP servers (features/mcp_client.py), or None.
+    `start`: a dict kept for the whole conversation, where a kept start is held when your edits apply from
+    the next conversation (Settings → "Apply edits")."""
     is_mcp = mcp.handles if mcp else (lambda name: False)
     # Tools from MCP servers are someone else's code, so they ask first unless you change it (as in the page)
-    permission = lab_settings.permission(settings, lambda name: "ask" if is_mcp(name) else loop.default_permission(name))
-    thinking = lab_settings.thinking_spec(settings, providers.thinking_style(provider), providers.is_local(provider))
-    cache = lab_settings.caching(settings)
-    max_tokens, max_turns = lab_settings.limits(settings)
-    together = lab_settings.at_once(settings)  # tools from MCP programs never run at the same time as others
-    at_once = None if together is None else (lambda name: together(name) and not is_mcp(name))
+    setup = message_setup.build(settings, provider, base_tools(mcp), facts, is_mcp=is_mcp,
+                                default_permission=lambda name: "ask" if is_mcp(name) else loop.default_permission(name))
+    if start is not None and lab_settings.per_conversation(settings):
+        # The conversation keeps the prompt and tools it began with; edits apply from the next one
+        if not start:
+            start.update(system=setup["system"], tools=setup["described"])
+        message_setup.use_kept_start(setup, start, settings)
+    elif start is not None:
+        start.clear()  # edits apply per message again: drop any start kept earlier
+    if setup["hooks"].problem:
+        say(f"[my_hooks.py has a problem, so no hooks this time: {setup['hooks'].problem}]")
 
     def run_tool(name, args):
         return mcp.call(name, args) if is_mcp(name) else tools.run_tool(name, args)
     on_event = show_tools(say)
     context.maybe_compact(messages, settings, client, model, provider, on_event)
     shared = dict(
-        max_tokens=max_tokens, confirm=confirm, on_event=on_event, model=model, tools=offered,
-        permission=permission, hooks=my_hooks, thinking=thinking, cache=cache, busy=lab_settings.busy(settings),
-        at_once=at_once, prepare=context.preparer(settings, provider),
+        message_setup.loop_args(setup), confirm=confirm, on_event=on_event, model=model,
+        prepare=context.preparer(settings, provider),
         # helpers follow your rules too (a tool you set to Block is blocked for them)
-        run=subagents.with_delegate(run_tool, client, model, offered, hooks=my_hooks,
-                                    permission=permission, thinking=thinking, cache=cache,
-                                    busy=lab_settings.busy(settings)))
-    extra = lab_settings.extra_tools(settings)
-    if extra and not lab_settings.workflow(settings):  # the 40 office tools (features/tool_search.py)
-        box = tool_search.Toolbox(offered, extra, tool_search.used_in(messages))  # (what earlier messages loaded)
+        run=subagents.with_delegate(run_tool, client, model, setup["tools"], hooks=setup["hooks"],
+                                    permission=setup["permission"], thinking=setup["thinking"],
+                                    cache=setup["cache"], busy=setup["busy"]))
+    if setup["extra_tools"] and not setup["workflow"]:  # the 40 office tools (features/tool_search.py)
+        # (starting from what earlier messages loaded)
+        box = tool_search.Toolbox(setup["tools"], setup["extra_tools"], tool_search.used_in(messages))
         shared.update(tools=lambda: providers.tools_for(provider, box.now()), run=box.run(shared["run"]))
     try:
-        if lab_settings.workflow(settings):  # a fixed chain of agents (features/workflow.py)
-            return plain(workflow.run(messages, client, max_turns=max_turns, **shared))
-        return plain(loop.agent(messages, client, max_turns, system=system, **shared))
+        if setup["workflow"]:  # a fixed chain of agents (features/workflow.py)
+            return plain(workflow.run(messages, client, max_turns=setup["max_turns"], **shared))
+        return plain(loop.agent(messages, client, setup["max_turns"], system=setup["system"], **shared))
     except Exception as e:
         return f"[{providers.error_event(e)['message']}]"
 
 
 def main():
     parser = argparse.ArgumentParser(description="The harness lab, in the terminal")
-    # The mock by default, as the page: free on your Claude Code plan (the paid API needs --provider anthropic)
+    # The mock by default, as the page: no extra charge on your Claude Code plan (the API needs --provider anthropic)
     parser.add_argument("--provider", choices=providers.PROVIDERS, default="mock")
     provider = parser.parse_args().provider
     problem = providers.is_local(provider) and providers.unavailable(provider)  # not running, no models, no address
     if problem:
         parser.exit(1, f"{providers.PROVIDERS[provider]['label']}: {problem}\n")
-    client = make_client(provider)
+    try:
+        client = make_client(provider)
+    except providers.MissingKey as e:
+        parser.exit(1, f"{e}\n")
     model = providers.default_model(provider)
-    messages = []
+    messages, start = [], {}
     sharing = len(memory.shared(memory.load()))
     mcp = mcp_client.load()  # tools from the servers in config/mcp_servers.json, as the page loads them
     for trouble in mcp.problems:
@@ -181,7 +174,7 @@ def main():
                 messages.append({"role": "user", "content": task})
                 # Re-read every time, so edits made in the web page (or to my_hooks.py) apply straight away
                 print("\nAssistant:", one_message(messages, client, provider, model, lab_settings.load(),
-                                                  memory.load(), mcp=mcp))
+                                                  memory.load(), mcp=mcp, start=start))
         except (KeyboardInterrupt, EOFError):  # Ctrl+C, or Ctrl+Z / Ctrl+D (end of input), even at a question
             pass
         print("\nBye.")

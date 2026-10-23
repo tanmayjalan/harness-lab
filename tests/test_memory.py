@@ -14,7 +14,7 @@ from types import SimpleNamespace as NS
 
 from anthropic.types import TextBlock
 
-from harness.core import loop, tools
+from harness.core import loop
 from harness.features import memory
 from harness.web import server as web_server
 
@@ -60,6 +60,59 @@ class RememberTests(unittest.TestCase):
         memory.remember("favourite colour", "blue", path)  # same label: update, don't duplicate
         facts = [f for f in memory.load(path) if f["label"].lower() == "favourite colour"]
         self.assertEqual(facts, [{"label": "Favourite colour", "value": "blue", "share": True}])
+
+    # Several facts saved at the same moment (Compare or evals running a question 3 at a time, say) must all
+    # be kept, with no save failing on another's half-done file
+    def test_facts_saved_at_the_same_time_are_all_kept(self):
+        path = tmp_profile()
+        errors = []
+
+        def remember_some(who):
+            for i in range(6):
+                try:
+                    memory.remember(f"fact {who}-{i}", "yes", path)
+                except Exception as e:  # noqa: BLE001  (any failure is the bug)
+                    errors.append(repr(e))
+        threads = [threading.Thread(target=remember_some, args=(n,)) for n in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(errors, [])
+        labels = {f["label"] for f in memory.load(path)}
+        self.assertEqual({f"fact {w}-{i}" for w in range(4) for i in range(6)} - labels, set())
+        self.assertEqual(list(path.parent.glob("*.tmp")), [])  # no temporary files left behind
+
+    # A damaged profile must not stop every message, and must not be overwritten by the next save either:
+    # it is moved aside (kept, so you can fix it) and the starter facts are used, with a note saying so
+    def test_a_damaged_profile_is_moved_aside_and_reported(self):
+        from harness import saving
+        path = tmp_profile()
+        path.write_text('{"facts": [ broken', encoding="utf-8")
+        saving.DAMAGED.clear()
+        self.addCleanup(saving.DAMAGED.clear)
+        facts = memory.load(path)
+        self.assertEqual([f["label"] for f in facts], [f["label"] for f in memory.STARTER])
+        self.assertFalse(path.exists())
+        aside = list(path.parent.glob("profile.damaged-*.json"))
+        self.assertEqual(len(aside), 1)
+        self.assertEqual(aside[0].read_text(encoding="utf-8"), '{"facts": [ broken')
+        self.assertEqual(len(saving.DAMAGED), 1)
+        self.assertIn(aside[0].name, saving.notes()[0])
+
+    # A profile edited by hand to more facts than the page allows is still read whole: it isn't damaged, so it
+    # isn't moved aside (the limit applies when the page saves)
+    def test_a_profile_over_the_limit_is_read_not_moved_aside(self):
+        import json
+        from harness import saving
+        path = tmp_profile()
+        facts = [{"label": f"fact {i}", "value": "x", "share": False} for i in range(memory.MAX_FACTS + 1)]
+        path.write_text(json.dumps({"facts": facts}), encoding="utf-8")
+        saving.DAMAGED.clear()
+        self.addCleanup(saving.DAMAGED.clear)
+        self.assertEqual(len(memory.load(path)), memory.MAX_FACTS + 1)
+        self.assertTrue(path.exists())
+        self.assertEqual(saving.notes(), [])
 
     def test_model_can_only_remember_with_your_ok(self):
         from anthropic.types import ToolUseBlock

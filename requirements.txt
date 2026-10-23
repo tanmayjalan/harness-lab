@@ -1,3 +1,3 @@
-anthropic
+anthropic>=1.11,<2  # the loop uses 1.11's request fields and its HTTP library (httpx2)
 tzdata  # time-zone data for get_current_time (Windows has none built in)
-mcp     # tools from MCP servers (mcp_tools.py); the harness still runs without it
+mcp>=2.3,<3     # tools from MCP servers (features/mcp_client.py); the harness still runs without it

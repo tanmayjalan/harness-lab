@@ -1,6 +1,6 @@
 # A tour of the page
 
-![The Harness lab's start page: a short explanation of a harness, the loop diagram and the first experiments](images/chat-start.png)
+![The Harness lab after one question: the conversation list on the left, the three model calls and the answer in the middle, and the Inspector on the right showing one call's time, cost and tokens](images/chat-run.png)
 
 Three columns: your conversations on the left, the conversation in the middle, and a look inside one model call
 on the right. Along the top: **Chat**, **Compare**, **Evals**, then **Experiments**, **?** and Settings.
@@ -33,9 +33,13 @@ crashed.
   and each step shows the text your code sent it and what it returned.
 - Each idea is explained in full the first time it appears, then shrinks to an ⓘ (its popover leads to the
   glossary).
-- An empty conversation offers the **experiments** (also under **Experiments** at the top): each says where
-  to look while it runs (with your guess, just above the message box), then what it showed and what to try
-  next, right under the answer.
+- An empty conversation offers the **experiments** (also under **Experiments** at the top), under a short
+  explanation of a harness and the loop diagram:
+
+  ![The start page: a short explanation of a harness, the loop diagram and the first experiments](images/chat-start.png)
+
+  Each experiment says where to look while it runs (with your guess, just above the message box), then what
+  it showed and what to try next, right under the answer.
 - When a tool needs your OK, the message box is replaced by one **approval** panel: Allow or Decline (keys
   **A** / **D**), and "Always allow" to stop being asked for that tool.
 - Above the message box: the provider and model in use (click to switch) and the tokens used so far.

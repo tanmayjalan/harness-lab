@@ -15,7 +15,7 @@ from anthropic.types import TextBlock, ToolUseBlock
 from harness import cli, evals
 from harness.core import loop, office_tools, tools
 from harness.features import lab_settings, subagents, tool_search, workflow
-from harness.web import compare, conversations
+from harness.web import compare
 from harness.web import server as web_server
 
 BOOK = {"room": "B", "date": "2026-10-14", "start_time": "15:00", "people": 4}

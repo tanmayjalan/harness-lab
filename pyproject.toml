@@ -1,0 +1,22 @@
+# What the project is and what it needs, for tools that read this file. setup.bat installs requirements.txt,
+# which lists the same packages (tests/test_project.py checks they match). The lab isn't installed as a package:
+# it runs from this folder.
+[project]
+name = "harness-lab"
+version = "0.1.0"
+description = "A small AI agent harness you can watch, built to learn how one works"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=1.11,<2",
+    "tzdata",
+    "mcp>=2.3,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/tanmayjalan/harness-lab"
+
+# The Python checker CI runs (ruff check): mistakes such as unused imports and undefined names, not style
+[tool.ruff.lint]
+select = ["F", "E9"]

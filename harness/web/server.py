@@ -12,7 +12,6 @@ in memory; restarting the server starts a fresh conversation.
 """
 import argparse
 import json
-import mimetypes
 import pathlib
 import os
 import threading
@@ -24,36 +23,38 @@ from urllib.parse import parse_qs, urlparse
 from harness.features import context
 from harness.web import compare
 from harness.web import conversations
+from harness.web import tally
 from harness import evals
 from harness.web.jsonify import to_json
 from harness.core import local_models, local_only, loop, run_code, tools
 from harness.features import hooks
 from harness.features import lab_settings
+from harness.features import message_setup
 from harness.features import skills
 from harness.features import mcp_client
 from harness.core import mock_server
 from harness.core import providers
 from harness.features import subagents
 from harness.features import tool_search
-from harness.features import trimming
 from harness.features import memory
 from harness.features import workflow
 from harness.features import checkpoints
-from harness import paths
+from harness import paths, saving
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"  # the built page (ui/ → npm run build)
+# What each file of the built page is sent as. A fixed list, not Windows' own (read from the registry, it can
+# say text/plain for .js); anything else is sent as plain bytes
+STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
+                ".mjs": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+                ".json": "application/json; charset=utf-8", ".map": "application/json; charset=utf-8",
+                ".svg": "image/svg+xml; charset=utf-8", ".png": "image/png", ".ico": "image/x-icon",
+                ".woff2": "font/woff2"}
 NOT_BUILT = (
     "<!doctype html><meta charset=utf-8><title>Harness lab</title>"
     "<h1>The page isn't built yet</h1>"
     "<p>Run <code>npm install</code> and <code>npm run build</code> in the <code>ui</code> folder, "
-    "or start the lab with <code>start.bat</code>, which builds it when Node.js is installed.</p>"
+    "or get <code>harness/web/static</code> again from git, then run <code>start.bat</code> again.</p>"
 ).encode("utf-8")
-
-# Windows reads file types from the registry, which can say text/plain for .js: pin the ones we serve
-for _ext, _type in [(".js", "application/javascript"), (".mjs", "application/javascript"), (".css", "text/css"),
-                    (".svg", "image/svg+xml"), (".woff2", "font/woff2"), (".map", "application/json"),
-                    (".html", "text/html"), (".ico", "image/x-icon"), (".png", "image/png")]:
-    mimetypes.add_type(_type, _ext)
 
 
 class CannotRewind(Exception):
@@ -195,101 +196,97 @@ class Session:
     def _run(self):
         self._checkpoint(str(self.msg))  # the files as they were before this message, for Rewind
         try:
-            # Read the profile and your settings fresh for every message, so changes apply straight away
-            facts = memory.load(self.profile_path)
-            settings = lab_settings.load(self.settings_path)
-            base_system = lab_settings.system_prompt(settings, loop.SYSTEM)
-            # (shaped for the provider just below; run_python only with Run code on)
-            described = lab_settings.offered_tools(settings, self.base_tools)
-            self._tools_now = providers.tools_for(self.provider, described)
-            self._hooks_now = hooks.load()  # your my_hooks.py, read fresh for every message
-            self._maybe_compact(settings)   # summarise old history first, if you turned that on
-            system = memory.system_prompt(base_system, facts)
-            # Skills: a line each in the prompt and a tool to load one, or every skill in full. Added
-            # before the start is kept, so a kept start keeps them too
-            found, skill_setting = skills.load_all(), settings.get("skills")
-            system = skills.system_prompt(system, skill_setting, found)
-            if skills.offers_tool(skill_setting, found):
-                described = [*described, skills.SKILL_TOOL]
-                self._tools_now = providers.tools_for(self.provider, described)
-            extra = lab_settings.extra_tools(settings)
-            if extra:  # 40 office tools: every call sends all of them, or find_tool (features/tool_search.py)
-                described = tool_search.start(described, extra)
-                self._tools_now = providers.tools_for(self.provider, described)
-            shared = len(memory.shared(facts))
-            kept = None
-            if lab_settings.per_conversation(settings):
-                # The conversation keeps the start it began with (the facts about you are in it too);
-                # edits apply from the next conversation
-                if self.frozen is None:
-                    self.frozen = {"system": system, "tools": to_json(described), "facts_shared": shared,
-                                   "system_edited": bool(settings.get("system")),
-                                   "descriptions": sorted(settings.get("descriptions") or {})}
-                kept = lab_settings.kept_start(self.frozen, loop.SYSTEM, self.base_tools)
-                system = self.frozen["system"]
-                # Shaped for the provider in use now, so a switch mid-conversation gets the right options
-                # ("strict" only for Anthropic). A start kept by an older save was shaped when it was kept.
-                # Run code switched off is a safety switch, so it applies at once: run_python leaves even a
-                # kept start (the tool list changes, and the loop refuses a tool it didn't offer)
-                kept_tools = [t for t in self.frozen["tools"]
-                              if t.get("name") != "run_python" or lab_settings.run_code(settings)]
-                self._tools_now = providers.tools_for(self.provider, kept_tools)
-            else:
-                self.frozen = None  # a message sent per message drops any start kept earlier
-            # What this message sends, for the page: the kept start's facts and edits, not today's
-            self.shared_facts = kept["facts_shared"] if kept else shared
-            self.edits = lab_settings.what_changed(settings, kept)
-            base = lab_settings.permission(settings, self.default_permission)
-            self.allow_now = set()
-            # "Always allow" answered during this message counts at once, not only from the next message
-            permission = lambda name, base=base: "allow" if name in self.allow_now and base(name) == "ask" else base(name)  # noqa: E731
-            self._permission_now = permission  # helpers follow your rules too
-            self._thinking_now = lab_settings.thinking_spec(settings, providers.thinking_style(self.provider),
-                                                           providers.is_local(self.provider))
-            self._cache_now = lab_settings.caching(settings)
-            self._busy_now = lab_settings.busy(settings)  # the practice switch, for helpers too
-            self._config_now = lab_settings.snapshot(
-                settings, provider=self.provider, label=self.mode, model=self.model, system=system,
-                facts_shared=self.shared_facts, tools=self._tools_now, permission=permission, source=self.tool_source,
-                kept=kept)
-            max_tokens, max_turns = lab_settings.limits(settings)
-            shared = dict(max_tokens=max_tokens, confirm=self._confirm, on_event=self.emit, model=self.model,
-                          tools=self._tools_now, permission=permission, run=self._run_tool_stoppable,
-                          should_stop=lambda: self.stop_requested, hooks=self._hooks_now,
-                          prepare=self._prepare(settings), thinking=self._thinking_now, cache=self._cache_now,
-                          busy=self._busy_now, at_once=self._at_once(settings))
-            self._tools_fn = None
-            if extra and not lab_settings.workflow(settings):  # (a workflow step gets read-only tools only)
-                if self._toolbox is None:  # a new or reopened conversation: start from what its history loaded
-                    self._toolbox = tool_search.Toolbox(self._tools_now, extra, tool_search.used_in(self.messages))
-                box = self._toolbox
-                box.base, box.mode = self._tools_now, extra  # (your settings may have changed since the last message)
-                self._tools_fn = lambda: providers.tools_for(self.provider, box.now())
-                shared.update(tools=self._tools_fn, run=box.run(self._run_tool_stoppable))
-            if lab_settings.workflow(settings):
-                # A fixed chain of agents, each step with its own instructions and tools (features/workflow.py).
-                # Not streamed: the steps' notes and drafts aren't the answer
-                answer = workflow.run(self.messages, self.client, max_turns=min(max_turns, self.max_turns), **shared)
-            else:
-                answer = loop.agent(self.messages, self.client, min(max_turns, self.max_turns), system=system,
-                                    stream=self.provider != "mock",  # the mock server can't stream
-                                    **shared)
-            self.emit("answer", text=answer)
+            self.emit("answer", text=self._answer())
         except loop.Stopped:
             self.emit("stopped")
         except Exception as e:
             self.emit("error", **providers.error_event(e))
         finally:
+            self._finish()
+
+    def _answer(self):
+        """Set this message up from your settings, then answer it with the loop (or the workflow)."""
+        # Read the profile and your settings fresh for every message, so changes apply straight away
+        facts = memory.load(self.profile_path)
+        settings = lab_settings.load(self.settings_path)
+        self._maybe_compact(settings)  # summarise old history first, if you turned that on
+        setup = message_setup.build(settings, self.provider, self.base_tools, facts,
+                                    default_permission=self.default_permission, is_mcp=self.is_mcp)
+        extra = lab_settings.extra_tools(settings)
+        if extra:  # 40 office tools: every call sends all of them, or find_tool (features/tool_search.py).
+            # In the first call's list, so a kept start keeps them too
+            message_setup.set_tools(setup, tool_search.start(setup["described"], extra))
+        kept = self._keep_start(setup, settings)
+        # What this message sends, for the page: the kept start's facts and edits, not today's
+        self.shared_facts = kept["facts_shared"] if kept else setup["facts_shared"]
+        self.edits = lab_settings.what_changed(settings, kept)
+        self._tools_now, self._hooks_now = setup["tools"], setup["hooks"]
+        # Helpers follow your rules, thinking, caching and the practice switch too (run_tool)
+        self._thinking_now, self._cache_now, self._busy_now = setup["thinking"], setup["cache"], setup["busy"]
+        self.allow_now = set()
+        base = setup["permission"]
+        # "Always allow" answered during this message counts at once, not only from the next message
+        permission = lambda name: "allow" if name in self.allow_now and base(name) == "ask" else base(name)  # noqa: E731
+        self._permission_now = permission
+        self._config_now = lab_settings.snapshot(
+            settings, provider=self.provider, label=self.mode, model=self.model, system=setup["system"],
+            facts_shared=self.shared_facts, tools=self._tools_now, permission=permission, source=self.tool_source,
+            kept=kept)
+        shared = dict(message_setup.loop_args(setup), permission=permission, confirm=self._confirm,
+                      on_event=self.emit, model=self.model, run=self._run_tool_stoppable,
+                      should_stop=lambda: self.stop_requested, prepare=self._prepare(settings))
+        self._tools_fn = None
+        if extra and not setup["workflow"]:  # (a workflow step gets read-only tools only)
+            box = self._toolbox_for(extra)
+            self._tools_fn = lambda: providers.tools_for(self.provider, box.now())
+            shared.update(tools=self._tools_fn, run=box.run(self._run_tool_stoppable))
+        max_turns = min(setup["max_turns"], self.max_turns)
+        if setup["workflow"]:
+            # A fixed chain of agents, each step with its own instructions and tools (features/workflow.py).
+            # Not streamed: the steps' notes and drafts aren't the answer
+            return workflow.run(self.messages, self.client, max_turns=max_turns, **shared)
+        return loop.agent(self.messages, self.client, max_turns, system=setup["system"],
+                          stream=self.provider != "mock",  # the mock server can't stream
+                          **shared)
+
+    def _keep_start(self, setup, settings):
+        """With edits applying per conversation, the conversation keeps the start it began with (the facts about
+        you are in it too) and edits apply from the next conversation. Returns what the kept start sent
+        (lab_settings.kept_start), or None when edits apply per message."""
+        if not lab_settings.per_conversation(settings):
+            self.frozen = None  # a message sent per message drops any start kept earlier
+            return None
+        if self.frozen is None:
+            self.frozen = {"system": setup["system"], "tools": to_json(setup["described"]),
+                           "facts_shared": setup["facts_shared"], "system_edited": bool(settings.get("system")),
+                           "descriptions": sorted(settings.get("descriptions") or {})}
+        message_setup.use_kept_start(setup, self.frozen, settings)
+        return lab_settings.kept_start(self.frozen, loop.SYSTEM, self.base_tools)
+
+    def _toolbox_for(self, mode):
+        """This conversation's Toolbox: which of the 40 office tools it has loaded so far (features/tool_search.py)."""
+        if self._toolbox is None:  # a new or reopened conversation: start from what its history loaded
+            self._toolbox = tool_search.Toolbox(self._tools_now, mode, tool_search.used_in(self.messages))
+        box = self._toolbox
+        box.base, box.mode = self._tools_now, mode  # (your settings may have changed since the last message)
+        return box
+
+    def _finish(self):
+        """After every message, however it ended: note the files, save the conversation, then say it's done."""
+        try:
             # The files after the reply: anything that differs later was changed by you, not the model
             self._checkpoint("after", store=False)
+        except Exception as e:
+            print(f"  !! could not note the workspace's files after the reply: {e}")
+        try:
             with self.lock:
                 self._append("done", {})
                 saved = (self.conv_id, self.title(), to_json(self.messages), list(self.events), self.frozen)
                 where = {"kind": self.kind, "origin": self.origin, "checkpoints": dict(self.checkpoints)}
-            try:  # saved only between messages, never while an approval is waiting
-                conversations.save(*saved, **where)
-            except OSError as e:
-                print(f"  !! could not save the conversation: {e}")
+            conversations.save(*saved, **where)  # saved only between messages, never while an approval waits
+        except Exception as e:  # (whatever went wrong, the message must still finish below)
+            print(f"  !! could not save the conversation: {e}")
+        finally:
             with self.lock:  # only now is it finished, so nothing can open or reset it mid-save
                 self.running = False
 
@@ -348,7 +345,7 @@ class Session:
         """What the removed messages' tools did that a rewind can't take back: it happened outside the workspace."""
         stopped = {e["result"].get("tool_use_id") for e in events
                    if (e["kind"] == "tool_result" or (e["kind"] == "sub" and e.get("step") == "tool_result"))
-                   and e.get("outcome") in ("declined", "blocked", "hook_blocked", "unattended", "not_run")
+                   and e.get("outcome") in tally.NOT_RUN  # (one that failed with an error may have done part of it)
                    and isinstance(e.get("result"), dict)}
         out = []
         for e in events:
@@ -420,16 +417,13 @@ class Session:
         return {"text": user.get("text", ""), "files": done is not None,
                 "restored": len(done["restore"]) if done else 0, "deleted": len(done["delete"]) if done else 0}
 
-    def _at_once(self, settings):
-        """Which tools may run at the same time (tools from MCP programs never do), or None with it off."""
-        may = lab_settings.at_once(settings)
-        if may is None:
-            return None
-        return lambda name: may(name) and not (self.mcp and self.mcp.handles(name))
+    def is_mcp(self, name):
+        """Whether this tool comes from an MCP server (another program) rather than the harness."""
+        return bool(self.mcp and self.mcp.handles(name))
 
     def default_permission(self, name):
         """Tools from MCP servers are someone else's code, so they ask first unless you change it."""
-        if self.mcp and self.mcp.handles(name):
+        if self.is_mcp(name):
             return "ask"
         return loop.default_permission(name)
 
@@ -447,7 +441,7 @@ class Session:
                 on_event=on_sub, should_stop=lambda: self.stop_requested, hooks=self._hooks_now,
                 permission=self._permission_now, thinking=self._thinking_now, cache=self._cache_now,
                 busy=self._busy_now)
-        if self.mcp and self.mcp.handles(name):
+        if self.is_mcp(name):
             return self.mcp.call(name, args)
         return tools.run_tool(name, args, self.profile_path)
 
@@ -455,7 +449,7 @@ class Session:
         """run_tool for this conversation's own messages: Stop ends a running script at once, instead of
         waiting for it to finish or reach its time limit. (Compare and Re-run still wait for a script, at most
         the time limit.)"""
-        if name == "run_python" and not (self.mcp and self.mcp.handles(name)):
+        if name == "run_python" and not self.is_mcp(name):
             return run_code.run_python(code=args.get("code"), path=args.get("path"),
                                        should_stop=lambda: self.stop_requested)
         return self.run_tool(name, args)
@@ -487,7 +481,7 @@ class Session:
             if getattr(self, "_permission_now", None):
                 extra["setting"] = self._permission_now(name)  # your rule, before the workspace check
             if name in tools.PATH_TOOLS and call_input.get("path"):
-                extra["where"] = str(tools.resolve(call_input["path"]))  # where the file really is
+                extra["where"] = tools.where(call_input["path"])  # where the file really is
             if script is not None:
                 extra["script"] = script
             if name == "remember_fact":  # a label you already have: say what it replaces (F277)
@@ -583,6 +577,9 @@ class Session:
             return True
 
     def delete(self, conv_id):
+        with self.lock:
+            if conv_id == self.conv_id and self.running:
+                return False  # it would be saved again when the reply ends, leaving a stale copy for Undo
         conversations.delete(conv_id)
         if conv_id == self.conv_id:
             return self.reset()
@@ -654,7 +651,10 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, FileNotFoundError):
                 return self.send_json(404, {"error": "no saved conversation with that id"})
         if url.path == "/events":
-            since = int(parse_qs(url.query).get("since", ["0"])[0])
+            try:
+                since = int(parse_qs(url.query).get("since", ["0"])[0])
+            except ValueError:
+                return self.send_json(400, {"error": "since must be a number"})
             return self.send_json(200, self.session.snapshot(since))
         self.send_json(404, {"error": "not found"})
 
@@ -664,108 +664,149 @@ class Handler(BaseHTTPRequestHandler):
         # Only accept JSON: a browser won't send that cross-site without asking us first
         if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
             return self.send_json(415, {"error": "send JSON"})
-        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-        if self.path == "/chat":
-            text = str(body.get("text", "")).strip()
-            if not text:
-                return self.send_json(400, {"error": "The message is empty."})
-            if not self.session.start(text):
-                return self.send_json(409, {"error": "The harness is still working on the last message. Wait for it, or press Esc to stop it."})
-            return self.send_json(202, {"ok": True})
-        if self.path == "/provider":
-            name = body.get("name")
-            if name not in providers.PROVIDERS:
-                return self.send_json(400, {"error": f"unknown provider {name!r}"})
-            if providers.is_local(name) and providers.unavailable(name):  # not running, no models, no address
-                return self.send_json(400, {"error": providers.unavailable(name)})
-            try:
-                client = self.server.clients.get(name)
-            except providers.MissingKey as e:
-                return self.send_json(400, {"error": str(e)})
-            p = providers.PROVIDERS[name]
-            model = body.get("model") or providers.default_model(name)
-            if model not in providers.models(name):
-                return self.send_json(400, {"error": f"{p['label']} has no model {model!r}"})
-            if not self.session.switch(name, client, p["label"], model):
-                return self.send_json(409, {"error": self.session.busy_reason()})
-            return self.send_json(200, {"mode": p["label"], "model": model})
-        if self.path == "/profile":
-            try:
-                facts = memory.save(body.get("facts"), self.session.profile_path)
-            except ValueError as e:
-                return self.send_json(400, {"error": str(e)})
-            return self.send_profile(facts)
-        if self.path == "/settings":
-            if not isinstance(body, dict):
-                return self.send_json(400, {"error": "settings must be an object"})
-            current = lab_settings.load(self.session.settings_path)
-            current["system"] = current["system"] or loop.SYSTEM
-            try:  # only the parts you sent are replaced; the rest stay as they were
+        try:
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+        except ValueError:  # (also a Content-Length that isn't a number)
+            return self.send_json(400, {"error": "the request isn't valid JSON"})
+        if not isinstance(body, dict):
+            return self.send_json(400, {"error": "send a JSON object"})
+        # Which method answers each address (they're below, in the same order)
+        routes = {
+            "/chat": self.post_chat,
+            "/provider": self.post_provider,
+            "/profile": self.post_profile,
+            "/settings": self.post_settings,
+            "/local-server": self.post_local_server,
+            "/settings/reset": self.post_settings_reset,
+            "/conversations/restore": self.post_restore,
+            "/conversations/open": self.post_open,
+            "/conversations/delete": self.post_delete,
+            "/compare/stop": self.post_compare_stop,
+            "/compare": self.run_compare,
+            "/rerun": self.run_rerun,
+            "/rewind/preview": lambda body: self.run_rewind(body, preview=True),
+            "/rewind": lambda body: self.run_rewind(body, preview=False),
+            "/evals/stop": self.post_evals_stop,
+            "/evals": self.start_evals,
+            "/stop": self.post_stop,
+            "/approve": self.post_approve,
+            "/reset": self.post_reset,
+        }
+        if self.path not in routes:
+            return self.send_json(404, {"error": "not found"})
+        return routes[self.path](body)
+
+    def post_chat(self, body):
+        """Your message: the loop answers it in the background, and the page polls GET /events."""
+        text = str(body.get("text", "")).strip()
+        if not text:
+            return self.send_json(400, {"error": "The message is empty."})
+        if not self.session.start(text):
+            return self.send_json(409, {"error": "The harness is still working on the last message. Wait for it, or press Esc to stop it."})
+        return self.send_json(202, {"ok": True})
+
+    def post_provider(self, body):
+        """Use another provider (and model) from the next message on."""
+        name = body.get("name")
+        problem = choice_problem(name, body.get("model"), say_which=False)
+        if problem:
+            return self.send_json(400, {"error": problem})
+        try:
+            client = self.server.clients.get(name)
+        except providers.MissingKey as e:
+            return self.send_json(400, {"error": str(e)})
+        label, model = providers.PROVIDERS[name]["label"], body.get("model") or providers.default_model(name)
+        if not self.session.switch(name, client, label, model):
+            return self.send_json(409, {"error": self.session.busy_reason()})
+        return self.send_json(200, {"mode": label, "model": model})
+
+    def post_profile(self, body):
+        try:
+            facts = memory.save(body.get("facts"), self.session.profile_path)
+        except ValueError as e:
+            return self.send_json(400, {"error": str(e)})
+        return self.send_profile(facts)
+
+    def post_settings(self, body):
+        """Only the parts you sent are replaced; the rest stay as they were."""
+        try:
+            with saving.lock_for(self.session.settings_path):  # (load and save as one step)
+                current = lab_settings.load(self.session.settings_path)
+                current["system"] = current["system"] or loop.SYSTEM
                 lab_settings.save(merge_settings(current, body), loop.SYSTEM, self.session.base_tools,
                                   self.session.default_permission, self.session.settings_path)
+        except ValueError as e:
+            return self.send_json(400, {"error": str(e)})
+        return self.send_settings()
+
+    def post_local_server(self, body):
+        """A local server's address (Ollama, LM Studio, another): save it, then look."""
+        name = body.get("name")
+        if not providers.is_local(name):
+            return self.send_json(400, {"error": f"{name!r} isn't a local server"})
+        if body.get("url") is not None:
+            try:
+                local_models.save(name, str(body["url"]))
             except ValueError as e:
                 return self.send_json(400, {"error": str(e)})
-            return self.send_settings()
-        if self.path == "/local-server":  # a local server's address (Ollama, LM Studio, another): save it, then look
-            name = body.get("name")
-            if not providers.is_local(name):
-                return self.send_json(400, {"error": f"{name!r} isn't a local server"})
-            if body.get("url") is not None:
-                try:
-                    local_models.save(name, str(body["url"]))
-                except ValueError as e:
-                    return self.send_json(400, {"error": str(e)})
-                self.server.clients.forget(name)  # the next call goes to the new address
-            local_models.forget()  # Check again: ask the server afresh
-            return self.send_json(200, provider_info(name))
-        if self.path == "/settings/reset":
-            lab_settings.reset(self.session.settings_path)
-            return self.send_settings()
-        if self.path == "/conversations/restore":
-            if not conversations.restore(str(body.get("id", ""))):
-                return self.send_json(404, {"error": "nothing to bring back with that id"})
-            return self.send_json(200, {"current": self.session.conv_id, "items": conversations.list_all()})
-        if self.path in ("/conversations/open", "/conversations/delete"):
-            try:
-                ok = (self.session.open if self.path.endswith("open") else self.session.delete)(body.get("id"))
-            except (ValueError, FileNotFoundError):
-                return self.send_json(404, {"error": "no saved conversation with that id"})
-            if not ok:
-                return self.send_json(409, {"error": self.session.busy_reason()})
-            return self.send_json(200, {"current": self.session.conv_id, "items": conversations.list_all()})
-        if self.path == "/compare/stop":
-            with self.server.compare_status_lock:
-                if not self.server.compare_status.get("running"):
-                    return self.send_json(409, {"error": "no comparison is running"})
-                self.server.compare_cancel.set()
-            return self.send_json(200, {"ok": True})
-        if self.path == "/compare":
-            return self.run_compare(body)
-        if self.path == "/rerun":
-            return self.run_rerun(body)
-        if self.path in ("/rewind/preview", "/rewind"):
-            return self.run_rewind(body, preview=self.path.endswith("preview"))
-        if self.path == "/evals/stop":
-            with self.server.evals_lock:
-                if not self.server.evals_status.get("running"):
-                    return self.send_json(409, {"error": "no eval run is going"})
-                self.server.evals_cancel.set()
-            return self.send_json(200, {"ok": True})
-        if self.path == "/evals":
-            return self.start_evals(body)
-        if self.path == "/stop":
-            if not self.session.stop():
-                return self.send_json(409, {"error": "nothing is running"})
-            return self.send_json(200, {"ok": True})
-        if self.path == "/approve":
-            if not self.session.decide(body.get("id"), body.get("allowed"), always=bool(body.get("always"))):
-                return self.send_json(404, {"error": "nothing is waiting for that approval"})
-            return self.send_json(200, {"ok": True})
-        if self.path == "/reset":
-            if not self.session.reset():
-                return self.send_json(409, {"error": self.session.busy_reason()})
-            return self.send_json(200, {"ok": True})
-        self.send_json(404, {"error": "not found"})
+            self.server.clients.forget(name)  # the next call goes to the new address
+        local_models.forget()  # Check again: ask the server afresh
+        return self.send_json(200, provider_info(name))
+
+    def post_settings_reset(self, body):
+        lab_settings.reset(self.session.settings_path)
+        return self.send_settings()
+
+    def post_restore(self, body):
+        """Undo a delete."""
+        if not conversations.restore(str(body.get("id", ""))):
+            return self.send_json(404, {"error": "nothing to bring back with that id"})
+        return self.send_json(200, {"current": self.session.conv_id, "items": conversations.list_all()})
+
+    def post_open(self, body):
+        return self._open_or_delete(self.session.open, body.get("id"))
+
+    def post_delete(self, body):
+        return self._open_or_delete(self.session.delete, body.get("id"))
+
+    def _open_or_delete(self, action, conv_id):
+        try:
+            ok = action(conv_id)
+        except (ValueError, FileNotFoundError):
+            return self.send_json(404, {"error": "no saved conversation with that id"})
+        if not ok:
+            return self.send_json(409, {"error": self.session.busy_reason()})
+        return self.send_json(200, {"current": self.session.conv_id, "items": conversations.list_all()})
+
+    def post_compare_stop(self, body):
+        with self.server.compare_status_lock:
+            if not self.server.compare_status.get("running"):
+                return self.send_json(409, {"error": "no comparison is running"})
+            self.server.compare_cancel.set()
+        return self.send_json(200, {"ok": True})
+
+    def post_evals_stop(self, body):
+        with self.server.evals_lock:
+            if not self.server.evals_status.get("running"):
+                return self.send_json(409, {"error": "no eval run is going"})
+            self.server.evals_cancel.set()
+        return self.send_json(200, {"ok": True})
+
+    def post_stop(self, body):
+        if not self.session.stop():
+            return self.send_json(409, {"error": "nothing is running"})
+        return self.send_json(200, {"ok": True})
+
+    def post_approve(self, body):
+        if not self.session.decide(body.get("id"), body.get("allowed"), always=bool(body.get("always"))):
+            return self.send_json(404, {"error": "nothing is waiting for that approval"})
+        return self.send_json(200, {"ok": True})
+
+    def post_reset(self, body):
+        """Start a new conversation."""
+        if not self.session.reset():
+            return self.send_json(409, {"error": self.session.busy_reason()})
+        return self.send_json(200, {"ok": True})
 
     def send_profile(self, facts):
         self.send_json(200, {
@@ -813,7 +854,7 @@ class Handler(BaseHTTPRequestHandler):
                 with self.server.compare_status_lock:
                     status["sides"][i]["done"] = done
 
-            cid = compare.new_id()
+            cid = conversations.new_id()
             try:
                 results = compare.compare(sides, text, repeat=repeat, progress=progress, cancel=cancel, cid=cid)
             finally:
@@ -829,12 +870,10 @@ class Handler(BaseHTTPRequestHandler):
     def _side(self, spec, include_profile, history=()):
         """Everything one side of a comparison needs: the saved settings with this side's changes on top."""
         name = spec["provider"]
-        p = providers.PROVIDERS[name]
-        if providers.is_local(name) and providers.unavailable(name):  # not running, no models, no address
-            raise ValueError(f"{p['label']}: {providers.unavailable(name)}")
+        problem = choice_problem(name, spec.get("model"))
+        if problem:
+            raise ValueError(problem)
         model = spec.get("model") or providers.default_model(name)
-        if model not in providers.models(name):
-            raise ValueError(f"{p['label']} has no model {model!r}")
         saved = lab_settings.load(self.session.settings_path)
         settings = lab_settings.clean(merge_settings(saved, spec.get("settings") or {}), loop.SYSTEM,
                                       self.session.base_tools, self.session.default_permission)
@@ -845,23 +884,21 @@ class Handler(BaseHTTPRequestHandler):
     def _yours(self):
         """The parts of a setup that come from this lab rather than from the settings file: its tools (MCP ones
         included), their default rules, and the code that runs them."""
-        mcp = self.session.mcp
         return {"base_tools": self.session.base_tools, "default_permission": self.session.default_permission,
                 "run": self.session.run_tool, "tool_source": self.session.tool_source,
-                "is_mcp": (lambda tool: mcp.handles(tool)) if mcp else (lambda tool: False)}
+                "is_mcp": self.session.is_mcp}
 
     def start_evals(self, body):
         """Run config/evals.json in the background; the page polls GET /evals/status. One at a time.
 
         Body: {provider, model?, repeat (1-5), use_my_settings?, judge?, only?}."""
         name = body.get("provider")
-        if name not in providers.PROVIDERS:
-            return self.send_json(400, {"error": f"unknown provider {name!r}"})
-        if providers.is_local(name) and providers.unavailable(name):
-            return self.send_json(400, {"error": f"{providers.PROVIDERS[name]['label']}: {providers.unavailable(name)}"})
+        problem = choice_problem(name, body.get("model"))
+        if problem:
+            return self.send_json(400, {"error": problem})
         model = body.get("model") or providers.default_model(name)
         repeat = body.get("repeat", 1)
-        if model not in providers.models(name) or not isinstance(repeat, int) or not 1 <= repeat <= 5:
+        if not isinstance(repeat, int) or not 1 <= repeat <= 5:
             return self.send_json(400, {"error": "Pick a model from the provider's list and 1 to 5 runs per question."})
         cases = evals.cases_from_config(body.get("only"))
         if not cases:
@@ -951,7 +988,7 @@ class Handler(BaseHTTPRequestHandler):
             with self.server.compare_status_lock:
                 status.clear()
                 status.update(running=True, started=time.time(), repeat=1, sides=[{"label": side["label"], "done": 0}])
-            cid = compare.new_id()
+            cid = conversations.new_id()
             try:
                 [now] = compare.compare([side], text, prefix="Re-run", cancel=cancel, cid=cid)
             finally:
@@ -1021,6 +1058,7 @@ class Handler(BaseHTTPRequestHandler):
             "run_code": s.get("run_code") or {"enabled": False},
             "extra_tools": s.get("extra_tools") or {"enabled": False, "mode": "find"},
             "mcp_problems": self.session.mcp.problems if self.session.mcp else [],
+            "damaged": saving.notes(),  # saved files that couldn't be read, moved aside (saving.set_aside)
             "hooks": self.hooks_status(),
             "file": str(self.session.settings_path),
         })
@@ -1038,16 +1076,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_static(self, rel):
         """Serve a file from the built page. False if it isn't there (or points outside the folder)."""
-        root = STATIC.resolve()
-        path = (root / rel).resolve()
-        if not path.is_relative_to(root) or not path.is_file():
+        root = os.path.normpath(os.path.realpath(STATIC))
+        path = os.path.normpath(os.path.realpath(os.path.join(root, rel)))  # (.. and shortcuts followed)
+        if not path.startswith(root + os.sep) or not os.path.isfile(path):
             return False
-        ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        if ctype.startswith("text/") or ctype in ("application/javascript", "application/json", "image/svg+xml"):
-            ctype += "; charset=utf-8"
+        # What it's sent as, from a fixed list by its ending (nothing from the address goes into a header)
+        ctype = STATIC_TYPES.get(os.path.splitext(path)[1].lower(), "application/octet-stream")
         # Vite names files in assets/ by their content, so they can be cached for good
         cache = "public, max-age=31536000, immutable" if rel.startswith("assets/") else "no-store"
-        self.send(200, path.read_bytes(), ctype, cache=cache)
+        with open(path, "rb") as f:
+            self.send(200, f.read(), ctype, cache=cache)
         return True
 
     def send(self, status, data, content_type, cache="no-store"):
@@ -1055,6 +1093,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", cache)
+        # Never shown inside another site's page: one could hide it in a frame and trick you into clicking
+        # Allow (clickjacking)
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(data)
 
@@ -1117,6 +1159,21 @@ def provider_info(name):
     return info
 
 
+def choice_problem(name, model, say_which=True):
+    """Why this provider and model can't be used now, in words for the page, or None if they can. An empty
+    `model` means the provider's default one. `say_which`: start a local server's problem with the provider's
+    name (Settings → Model doesn't, as its card already says which)."""
+    if name not in providers.PROVIDERS:
+        return f"unknown provider {name!r}"
+    label = providers.PROVIDERS[name]["label"]
+    if providers.is_local(name) and providers.unavailable(name):  # not running, no models, no address
+        return f"{label}: {providers.unavailable(name)}" if say_which else providers.unavailable(name)
+    model = model or providers.default_model(name)
+    if model not in providers.models(name):
+        return f"{label} has no model {model!r}"
+    return None
+
+
 def start_mock():
     """Run mock_server in this process on a free port; return a client that uses it (with its key)."""
     mock, key = mock_server.serve()
@@ -1163,7 +1220,12 @@ def main():
         print(f"MCP: {len(mcp.tools)} tools from {', '.join(sorted(set(mcp.sources.values())))}")
     for problem in mcp.problems:
         print(f"MCP: skipped {problem}")
-    session = Session(clients.get(name), p["label"], model=providers.default_model(name), provider=name, mcp=mcp)
+    try:
+        client = clients.get(name)
+    except providers.MissingKey as e:
+        mcp.close()  # (stop the MCP servers it started)
+        parser.exit(1, f"{e}\n")
+    session = Session(client, p["label"], model=providers.default_model(name), provider=name, mcp=mcp)
 
     conversations.purge_deleted(days=7)  # deleted ones stay a week (Undo, or a rescue by hand), then go
     try:  # then the copies of files that no conversation (deleted ones included) needs any more
