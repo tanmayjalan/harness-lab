@@ -34,6 +34,7 @@ everything. Node.js 26 or newer is only needed if you change the page in [`ui/`]
 cd ui
 npm install
 npm run typecheck
+npm run lint
 npm test
 ```
 

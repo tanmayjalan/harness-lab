@@ -36,11 +36,12 @@ npm install            once
 npm run dev            a live-reloading copy at http://localhost:5173 (start the lab first: it talks to port 8000)
 npm test               the page's tests
 npm run typecheck      check the TypeScript
+npm run lint           check for mistakes, and that each React effect lists what it uses (ESLint)
 npm run build          rebuild harness/web/static
 ```
 
-`start.bat` rebuilds the page by itself when a file in `ui/` is newer than the build (and npm is installed);
-`-NoBuild` skips that. If you change the page, commit the rebuilt `harness/web/static/` with it.
+`start.bat` rebuilds the page by itself when you're working on it: `ui/node_modules` exists (you ran
+`npm install`) and a file in `ui/` is newer than the build. `-NoBuild` skips that. If you change the page, commit the rebuilt `harness/web/static/` with it.
 
 ## Continuous integration
 

@@ -123,7 +123,7 @@ export function RunView({ composerRef, onRerun, onRewind }:
           : scroller.current?.closest('[inert]') ? `The model call failed. ${last.error ?? ''}` : ''
     const text = `${what} ${revealWords(model)}`.trim()
     if (text) say(text)
-  }, [last, conversation])
+  }, [last, conversation, model])
   // F428: while it runs, say each call as it comes back ("Call 1: asked for 2 tools"), so the wait isn't silent.
   // Not the one that finishes: "Reply received" says that
   const callsBack = useRef(new Set<string>())

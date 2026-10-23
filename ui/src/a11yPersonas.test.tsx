@@ -22,7 +22,7 @@ import answer from './test/fixtures/answer.json'
 import declined from './test/fixtures/approval_declined.json'
 
 const events = (x: unknown) => x as HarnessEvent[]
-const announced = () => document.querySelector('[data-announcer]')?.textContent?.replace(/​/g, '') ?? ''
+const announced = () => document.querySelector('[data-announcer]')?.textContent?.replace(/\u200B/g, '') ?? ''
 const key = (k: string) => act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: k })) })
 
 beforeEach(() => {

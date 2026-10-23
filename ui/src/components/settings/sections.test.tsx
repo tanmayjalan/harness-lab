@@ -361,7 +361,7 @@ describe('rules and dots', () => {
     wrap(<ContextSection settings={{ ...baseSettings, trim: { enabled: true, keep_last: 2 } } as Settings} />)
     const legend = screen.getByText(/^Trimming/).closest('legend')!
     expect(legend.querySelector('[aria-label^="changed"]')).not.toBeNull()
-    expect(legend.textContent).not.toMatch(/on/)
+    expect(legend.textContent).not.toMatch(/\bon\b/)
   })
 
   // F181: Memory's count is not a "changed" badge in a different colour
