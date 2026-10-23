@@ -37,6 +37,7 @@ export function MemorySection() {
   const ownSave = useRef<unknown>(null) // the profile this section's own save came back with
   useEffect(() => {
     if (!profile) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- whether to take in the stored list depends on refs the save timer and closing write, which render can't read
     if (facts === null) { latest.current = profile.facts; setFacts(profile.facts); return }
     // The stored profile changed elsewhere (an Undo pressed after this section was closed and opened again):
     // take it in when nothing here is waiting to be saved. Not the answer to this section's own save, which

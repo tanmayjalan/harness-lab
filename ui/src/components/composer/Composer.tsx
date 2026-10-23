@@ -26,13 +26,17 @@ export const Composer = forwardRef<ComposerHandle>(function Composer(_, ref) {
   // An experiment (or anything else) can put text in the box, once: coming back from another
   // screen re-creates the box, and must not bring back a draft that was already sent
   const draft = useUi((s) => s.draft)
+  const [taken, setTaken] = useState(0) // the draft this box took in
+  if (draft.n && draft.n !== taken && draft.n !== usedDraft) {
+    setTaken(draft.n)
+    setText(draft.text)
+  }
+  // Recorded (and the box focused) once it is on screen, not while rendering
   useEffect(() => {
-    if (draft.n && draft.n !== usedDraft) {
-      usedDraft = draft.n
-      setText(draft.text)
-      box.current?.focus()
-    }
-  }, [draft])
+    if (!taken) return
+    usedDraft = taken
+    box.current?.focus()
+  }, [taken])
 
   // What's in the box, for anything that would replace it (picking an experiment asks first)
   useEffect(() => { useUi.getState().setComposerText(text) }, [text])

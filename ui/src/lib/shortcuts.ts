@@ -1,6 +1,6 @@
 // One keyboard listener for the whole page. Letter keys are ignored while you're typing in a
 // box or a dialog is open (only Ctrl/Cmd shortcuts still work then), so "a" in a message never approves anything.
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 
 export type Shortcut = {
   key: string // e.g. "Escape", "a", "[", ","
@@ -28,7 +28,8 @@ const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform ?? '')
 
 export function useShortcuts(shortcuts: Shortcut[]) {
   const ref = useRef(shortcuts)
-  ref.current = shortcuts
+  // The newest list, read when a key is pressed: updated once the page has redrawn (not while drawing it), before any key can arrive
+  useLayoutEffect(() => { ref.current = shortcuts })
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing) return // a key that ends an input-method composition (Japanese, Chinese…) isn't a shortcut

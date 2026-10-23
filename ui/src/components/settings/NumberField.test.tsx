@@ -82,4 +82,18 @@ describe('NumberField', () => {
     fireEvent.blur(box)
     expect(onCommit).not.toHaveBeenCalled()
   })
+
+  // What you type stays while the page redraws; a new saved value (saved here or elsewhere) replaces it
+  it('keeps what you type until the saved value changes, then shows the new one', () => {
+    const onCommit = vi.fn(async () => true)
+    const at = (value: number) => <NumberField label="Longest reply" value={value} min={256} max={16000} defaultValue={16000} onCommit={onCommit} />
+    const { rerender } = render(at(16000))
+    const box = screen.getByRole('spinbutton', { name: 'Longest reply' }) as HTMLInputElement
+    fireEvent.change(box, { target: { value: '300' } })
+    rerender(at(16000))
+    expect(box.value).toBe('300')
+    rerender(at(8000))
+    expect(box.value).toBe('8000')
+    expect(onCommit).not.toHaveBeenCalled()
+  })
 })

@@ -79,8 +79,7 @@ export function ApprovalDock({ approval, row }: { approval: Approval; row?: Tool
   const [sending, setSending] = useState<null | boolean>(null)
   // A ref, not state: two presses in the same moment (a key held down) must not both send
   const inFlight = useRef(false)
-  const alwaysRef = useRef(always)
-  alwaysRef.current = always
+  const alwaysRef = useRef(always) // set by the checkbox: answer() below is made once and reads it when called
   const answer = useCallback(async (allowed: boolean) => {
     if (inFlight.current) return
     inFlight.current = true
@@ -97,7 +96,9 @@ export function ApprovalDock({ approval, row }: { approval: Approval; row?: Tool
   const allow = useRef<HTMLButtonElement>(null)
   // A and D only count after a moment: a key you were typing into the message box as the panel
   // appeared must not answer it. (Clicking Allow or Decline is never held back.)
-  const armedAt = useRef(Date.now() + 800)
+  // (Set once the panel is on screen; until then nothing counts.) Before the effect below, which reads it
+  const armedAt = useRef(Infinity)
+  useEffect(() => { armedAt.current = Date.now() + 800 }, [])
   useEffect(() => {
     useUi.getState().setApprovalDock({ answer, focus: () => allow.current?.focus(), armed: () => Date.now() >= armedAt.current })
     return () => useUi.getState().setApprovalDock(null)
@@ -130,7 +131,7 @@ export function ApprovalDock({ approval, row }: { approval: Approval; row?: Tool
         {/* first in the page order, so Tab reaches it before Allow; shown on the right */}
         {!approval.outside && row?.permission === 'ask' && (
           <label className="order-last ml-auto flex cursor-pointer items-center gap-1.5 text-sm text-muted">
-            <input type="checkbox" checked={always} onChange={(e) => setAlways(e.target.checked)} className="accent-[var(--accent)]" />
+            <input type="checkbox" checked={always} onChange={(e) => { alwaysRef.current = e.target.checked; setAlways(e.target.checked) }} className="accent-[var(--accent)]" />
             Always allow <code>{approval.tool}</code>
             <span className="text-xs">({alwaysNote(approval.tool)})</span>
           </label>

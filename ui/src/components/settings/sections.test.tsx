@@ -389,6 +389,29 @@ describe('wording inside Settings', () => {
   })
 })
 
+describe('Context: the % of the window box', () => {
+  // What you type stays while the page redraws; a new saved limit replaces it
+  it('keeps what you type until the saved limit changes, then shows the new one', () => {
+    const before = { info: useServer.getState().info, provider: useSession.getState().provider, model: useSession.getState().model }
+    useServer.setState({ info: { providers: [{ name: 'mock', context_windows: { m: 200000 } }] } as never })
+    useSession.setState({ provider: 'mock', model: 'm' })
+    try {
+      const at = (over_chars: number) => <ContextSection settings={{ ...baseSettings, compact: { enabled: true, over_chars } } as Settings} />
+      const { rerender } = render(at(40000))
+      const pct = screen.getByRole('spinbutton', { name: /percentage of the model's window/ }) as HTMLInputElement
+      expect(pct.value).toBe('5') // 40,000 characters, about 10,000 tokens, of 200,000
+      fireEvent.change(pct, { target: { value: '7' } })
+      rerender(at(40000))
+      expect(pct.value).toBe('7')
+      rerender(at(80000))
+      expect(pct.value).toBe('10')
+    } finally {
+      useServer.setState({ info: before.info })
+      useSession.setState({ provider: before.provider, model: before.model })
+    }
+  })
+})
+
 // F184: Ctrl+, from Help or Experiments closes them first, instead of stacking Settings on top
 describe('toggleSettings', () => {
   it('closes Help and Experiments before opening Settings', () => {

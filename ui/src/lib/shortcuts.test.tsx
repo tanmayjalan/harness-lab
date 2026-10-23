@@ -18,6 +18,17 @@ describe('useShortcuts', () => {
     expect(run).toHaveBeenCalledTimes(1)
   })
 
+  // The listener is added once; a key runs the handler from the page's newest drawing, not the first one
+  it('a key runs the newest handler after the page redraws', () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    const { rerender } = render(<Page run={first} />)
+    rerender(<Page run={second} />)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledTimes(1)
+  })
+
   // F312: on a Mac, Alt+letter types a character, so an alt shortcut must not fire inside a text box
   it('an alt shortcut does not fire while typing on a Mac', () => {
     const run = vi.fn()

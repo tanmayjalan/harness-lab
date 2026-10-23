@@ -1,7 +1,7 @@
 // Settings → Model with models on your own server (Ollama, LM Studio, another): which can be picked, why not,
 // the address field, and where your messages go
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import * as RTooltip from '@radix-ui/react-tooltip'
 import { api } from '../../api/client'
 import type { ProviderInfo, Settings } from '../../api/types'
@@ -103,6 +103,19 @@ describe('Settings → Model → Models on your own server', () => {
     fireEvent.change(field, { target: { value: '10.0.0.5:11434' } })
     fireEvent.click(button)
     await vi.waitFor(() => expect(save).toHaveBeenCalledWith('custom', '10.0.0.5:11434'))
+  })
+
+  // What you type stays while the page redraws; a new saved address replaces it
+  it('keeps a typed address until the saved address changes, then shows the new one', () => {
+    vi.spyOn(api, 'info').mockReturnValue(new Promise(() => {})) // no answer: only the changes below reach the page
+    wrap(<ModelSection />)
+    const field = screen.getByLabelText('Other server') as HTMLInputElement
+    fireEvent.change(field, { target: { value: '10.0.0.5:11434' } })
+    act(() => useServer.setState({ info: { ...info, providers: [...info.providers] } as never }))
+    expect(field.value).toBe('10.0.0.5:11434')
+    const moved = info.providers.map((p) => (p.name === 'custom' ? { ...custom, address: 'http://10.0.0.9:8080' } : p))
+    act(() => useServer.setState({ info: { ...info, providers: moved } as never }))
+    expect(field.value).toBe('http://10.0.0.9:8080')
   })
 
   it('Check again asks every server afresh', async () => {

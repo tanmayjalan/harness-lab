@@ -197,7 +197,8 @@ function Quiz() {
   // In the order the experiments teach; a question after something else (the Evals screen) comes last
   const place = (after: string) => { const i = EXPERIMENTS.findIndex((x) => x.title === after); return i < 0 ? Infinity : i }
   const tiers = [...new Set(QUIZ.map((q) => q.after))].sort((a, b) => place(a) - place(b))
-  let n = 0
+  // Questions are numbered on from tier to tier
+  const numberOf = new Map(tiers.flatMap((after) => QUIZ.filter((q) => q.after === after)).map((q, i) => [q.id, i + 1]))
   return (
     <section className="scroll-mt-4 space-y-2 outline-none" id="quiz" tabIndex={-1}>
       <div className="flex items-center justify-between">
@@ -219,7 +220,7 @@ function Quiz() {
           <ol className="space-y-2">
             {QUIZ.filter((q) => q.after === after).map((q) => {
               const picked = answers[q.id]
-              n += 1
+              const n = numberOf.get(q.id)
               return (
                 <li key={q.id} className="space-y-1 rounded-md border border-line p-2 text-sm">
                   <div className="font-medium">{n}. {q.q}</div>

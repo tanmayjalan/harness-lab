@@ -442,6 +442,20 @@ describe('the JSON tree as a tree (F333)', () => {
     expect(long.textContent).toMatch(/less$/)
   })
 
+  // Lines inside a line that Open all or Fold all just opened or folded follow it too, however deep
+  it('Open all reaches every level; after Fold all, a line you open shows its insides folded', () => {
+    const value = { a: { b: { c: { d: 1 } } } }
+    const { rerender } = render(<JsonTree value={value} openDepth={1} command={{ n: 0, open: false }} />)
+    expect(text()).not.toMatch(/d: 1/)
+    rerender(<JsonTree value={value} openDepth={1} command={{ n: 1, open: true }} />)
+    expect(text()).toMatch(/d: 1/)
+    rerender(<JsonTree value={value} openDepth={3} command={{ n: 2, open: false }} />)
+    expect(text()).not.toMatch(/a:/)
+    fireEvent.keyDown(screen.getAllByRole('treeitem')[0], { key: 'ArrowRight' })
+    expect(text()).toMatch(/a: \{ 1 key \}/) // folded, though openDepth alone would open it
+    expect(text()).not.toMatch(/b:/)
+  })
+
   it('folding the line that holds the Tab stop away hands it to the line that folded', () => {
     const { rerender } = render(<JsonTree value={{ b: { c: 2 } }} openDepth={2} command={{ n: 0, open: false }} />)
     const c = screen.getAllByRole('treeitem').find((i) => i.textContent === 'c: 2')!
