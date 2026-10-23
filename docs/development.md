@@ -2,7 +2,7 @@
 
 ## Other ways to run it
 
-Run these from the Harness folder:
+Run these from the `harness-lab` folder:
 
 | Command | What it does |
 |---|---|
@@ -27,8 +27,8 @@ conversations, hooks or workspace (see [`tests/isolate.py`](../tests/isolate.py)
 ## Working on the page
 
 The page's source is in [`ui/`](../ui/) (React, TypeScript and Tailwind, built with Vite). The built result is
-in [`harness/web/static/`](../harness/web/static/) and kept in git, so you only need Node.js to change the
-page.
+in [`harness/web/static/`](../harness/web/static/) and kept in git, so you only need Node.js (26 or newer) to
+change the page.
 
 ```
 cd ui

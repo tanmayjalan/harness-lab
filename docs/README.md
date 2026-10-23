@@ -12,3 +12,5 @@
 | [Development](development.md) | run the terminal version, evals and tests, and work on the page |
 
 New here? Start with [Getting started](getting-started.md), then the [learning path](learning-path.md).
+
+What changed recently is in the [changelog](../CHANGELOG.md).

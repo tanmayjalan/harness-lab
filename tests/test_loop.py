@@ -202,6 +202,88 @@ class HarnessTests(unittest.TestCase):
         finally:
             tools.WORKSPACE = old
 
+    # A path that isn't text (a small model's mistake) must come back to the model as an error. If it crashed
+    # the loop instead, the saved history would hold a tool request with no result, and the API refuses that
+    # conversation for good
+    def test_a_path_that_isnt_text_is_an_error_not_a_crash(self):
+        for path in [None, 5, ["a.txt"]]:
+            for name in ["read_file", "write_file"]:
+                with self.subTest(path=path, name=name):
+                    args = {"path": path, "content": "x"} if name == "write_file" else {"path": path}
+                    client = FakeClient(reply("tool_use", NS(type="tool_use", id="t1", name=name, input=args)),
+                                        reply("end_turn", text("ok")))
+                    answer, _ = self.run_agent(client, confirm=lambda p: "y")
+                    self.assertEqual(answer, "ok")
+                    result = tool_results(client, 1)[0]
+                    self.assertEqual(result["tool_use_id"], "t1")
+                    self.assertTrue(result["is_error"])
+
+    # write_file keeps the line endings the model gave: "\r\n" must not become "\r\r\n" on Windows
+    def test_write_file_keeps_line_endings_as_given(self):
+        old = tools.WORKSPACE
+        tools.WORKSPACE = self.tmp
+        self.addCleanup(setattr, tools, "WORKSPACE", old)
+        for content in ["a\r\nb\r\n", "a\nb\n"]:
+            with self.subTest(content=content):
+                tools.run_tool("write_file", {"path": "out.txt", "content": content})
+                self.assertEqual((self.tmp / "out.txt").read_bytes(), content.encode("utf-8"))
+
+    # A huge file isn't sent whole: only the start comes back, with a note saying how much was left out, so one
+    # read can't fill the conversation (and the bill)
+    def test_read_file_sends_only_the_start_of_a_huge_file(self):
+        old = tools.WORKSPACE
+        tools.WORKSPACE = self.tmp
+        self.addCleanup(setattr, tools, "WORKSPACE", old)
+        (self.tmp / "big.txt").write_text("x" * (tools.READ_LIMIT + 5000), encoding="utf-8")
+        (self.tmp / "small.txt").write_text("hello", encoding="utf-8")
+        text = tools.run_tool("read_file", {"path": "big.txt"})
+        self.assertTrue(text.startswith("x" * tools.READ_LIMIT))
+        self.assertIn(f"{tools.READ_LIMIT + 5000:,} characters", text)
+        self.assertLess(len(text), tools.READ_LIMIT + 300)
+        self.assertEqual(tools.run_tool("read_file", {"path": "small.txt"}), "hello")
+
+    # A ':' after the drive letter names a hidden extra part of a file (an "alternate data stream") that Rewind
+    # can't see, so the file tools refuse it
+    def test_file_tools_refuse_a_hidden_stream(self):
+        old = tools.WORKSPACE
+        tools.WORKSPACE = self.tmp
+        self.addCleanup(setattr, tools, "WORKSPACE", old)
+        (self.tmp / "a.txt").write_text("visible", encoding="utf-8")
+        for name, args in [("write_file", {"path": "a.txt:hidden", "content": "x"}),
+                           ("read_file", {"path": "a.txt:hidden"}), ("list_files", {"path": ".:x"}),
+                           ("run_python", {"path": "s.py:x"})]:
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(ValueError, "':'"):
+                    tools.run_tool(name, args)
+        self.assertEqual(tools.run_tool("read_file", {"path": str(self.tmp / "a.txt")}), "visible")  # C: is fine
+
+    # A network path (\\host\share) is outside the workspace by its text alone. Looking it up on the disk
+    # would make Windows contact that host before you're asked: the name lookup can carry data out, and the
+    # connection attempt can send your Windows login (NTLM hash)
+    def test_a_network_path_is_outside_and_never_looked_up(self):
+        from unittest import mock
+        looked_up = []
+        real = pathlib.Path.resolve
+
+        def record(self, *a, **kw):
+            looked_up.append(str(self))
+            return real(self, *a, **kw)
+        for path in ["\\\\attacker.example\\share\\x.txt", "//attacker.example/share/x.txt",
+                     "\\\\?\\UNC\\attacker.example\\share\\x.txt", "/\\attacker.example\\share\\x.txt"]:
+            for name in ["read_file", "write_file", "run_python"]:
+                with self.subTest(path=path, name=name):
+                    looked_up.clear()
+                    args = {"path": path, "content": "x"} if name == "write_file" else {"path": path}
+                    self.assertTrue(tools.outside_workspace(name, args))
+                    client = FakeClient(reply("tool_use", tool_use("t1", name, **args)), reply("end_turn", text("ok")))
+                    asked = []
+                    with mock.patch.object(pathlib.Path, "resolve", record):
+                        self.run_agent(client, confirm=lambda p: asked.append(p) or "n")
+                    self.assertIn("OUTSIDE the workspace", asked[0])
+                    self.assertIn("attacker.example", asked[0])
+                    self.assertFalse([p for p in looked_up if "attacker.example" in p], looked_up)
+                    self.assertIn("declined", tool_results(client, 1)[0]["content"])
+
     # F298: with nobody to ask (no confirm), a tool that needs your OK isn't run, and nobody is said to have
     # declined it or blocked it in the settings: the rule stays "ask" and the reason is given
     def test_with_nobody_to_ask_an_ask_first_tool_is_not_run(self):

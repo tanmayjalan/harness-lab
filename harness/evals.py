@@ -28,7 +28,6 @@ import argparse
 import hashlib
 import json
 import os
-import pathlib
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -36,7 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 from harness.web import compare, conversations
 from harness.core import loop, tools
 from harness.features import lab_settings
-from harness import paths
+from harness import paths, saving
 from harness.words import plural
 from harness.core import providers
 
@@ -242,8 +241,7 @@ def run_suite(provider, cases, model=None, repeat=1, use_my_settings=False, judg
             "judge_notes": [r["judged"][1] if r.get("judged") else None for r in runs],
             "conversations": [r.get("conversation") for r in runs],
             "problems": sorted({x for ps in problems for x in ps}),
-            "tools": [[t["name"] + (" (not run)" if t.get("unattended") else " (blocked)" if t.get("blocked") else " (failed)" if t.get("failed") else "")
-                       for t in r["tools"]] for r in runs],
+            "tools": [[tool_mark(t) for t in r["tools"]] for r in runs],
             "seconds": [r["seconds"] for r in runs], "tokens": [r["tokens_read"] + r["tokens_written"] for r in runs],
             "cost": [r.get("cost") for r in runs], "answers": [r.get("answer") for r in runs],
             "errors": [r.get("error") for r in runs],
@@ -274,9 +272,8 @@ def save_result(result, when=None, run_id=None):
     caller made it up front, so the run's conversations could point back to it)."""
     when = when or time.time()
     run_id = run_id or new_run_id(when)
-    HISTORY.mkdir(parents=True, exist_ok=True)
     data = {"id": run_id, "time": when, **result}
-    (HISTORY / f"{run_id}.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    saving.write_text(HISTORY / f"{run_id}.json", json.dumps(data, ensure_ascii=False))
     forget_old_conversations()
     return run_id
 
@@ -306,7 +303,7 @@ def forget_old_conversations(keep=KEEP_CONVERSATIONS):
         for case in data.get("cases", []):
             if case.get("conversations"):
                 case["conversations"] = []
-        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        saving.write_text(path, json.dumps(data, ensure_ascii=False))
 
 
 def history():
@@ -325,9 +322,9 @@ def history():
 
 
 def load_result(run_id):
-    if not isinstance(run_id, str) or not run_id.replace("-", "").isdigit():
+    if not isinstance(run_id, str) or not re.fullmatch(r"[0-9-]+", run_id):  # (plain digits: isdigit takes "²" too)
         raise ValueError("not an eval run id")
-    return json.loads((HISTORY / f"{run_id}.json").read_text(encoding="utf-8"))
+    return json.loads(saving.inside(HISTORY, f"{run_id}.json").read_text(encoding="utf-8"))
 
 
 def report(provider, cases, results, model=None, repeat=1):
@@ -368,6 +365,7 @@ def pass_rate(passed, total):
 
 
 def tool_mark(t):
+    """A tool's name, marked when it didn't run as asked: "read_file (blocked)"."""
     return t["name"] + (" (not run)" if t.get("unattended") else " (blocked)" if t.get("blocked") else " (failed)" if t.get("failed") else "")
 
 
@@ -466,12 +464,18 @@ def main():
         if not cases:
             parser.exit(1, f"No question contains {args.only!r}.\n")
     judge_with = None if args.judge == "none" else args.judge
+    if judge_with and providers.missing_key(judge_with):
+        parser.exit(1, f"The judge, {providers.PROVIDERS[judge_with]['label']}, needs "
+                       f"{providers.PROVIDERS[judge_with]['key_env']} set (or use --judge mock, or --judge none).\n")
     print(f"{plural(len(cases), 'question')}; {'your edited settings' if args.use_my_settings else 'default settings'}; "
           f"judge: {judge_with or 'none'}; facts about you left out; tools that need approval blocked.")
     for provider in args.provider:
         problem = providers.is_local(provider) and providers.unavailable(provider)
         if problem:  # a local server that isn't running (or has no models): say so and go on to the next
             print(f"  ({providers.PROVIDERS[provider]['label']}: {problem})")
+            continue
+        if providers.missing_key(provider):  # no key: say what to do and go on to the next
+            print(f"  ({providers.PROVIDERS[provider]['label']} needs {providers.PROVIDERS[provider]['key_env']} set)")
             continue
         model = args.model if args.model in providers.models(provider) else None
         if args.model and not model:

@@ -10,14 +10,13 @@ import re
 import statistics
 import threading
 import time
-import uuid
 
-from harness import paths
+from harness import paths, saving
 from harness.core import loop, providers, tools
-from harness.features import hooks as hooks_file
-from harness.features import lab_settings, memory, skills, subagents, tool_search, trimming, workflow
+from harness.features import lab_settings, message_setup, subagents, tool_search, trimming, workflow
 from harness.web import conversations
 from harness.web.jsonify import to_json
+from harness.web.tally import Tally, plain_usage
 
 HISTORY = paths.DATA / "compare"  # every comparison you ran, to look at again
 
@@ -32,33 +31,22 @@ def setup(name, model, settings, *, client, base_tools=tools.TOOLS, default_perm
     `use_hooks`) your hooks in config/my_hooks.py. `facts`: the facts about you to put in the prompt.
     `is_mcp`: tools from another program (MCP), which never run alongside others."""
     p = providers.PROVIDERS[name]
-    system = memory.system_prompt(lab_settings.system_prompt(settings, loop.SYSTEM), list(facts))
-    found = skills.load_all()
-    system = skills.system_prompt(system, settings.get("skills"), found)
-    offered = lab_settings.offered_tools(settings, base_tools)
-    tool_list = providers.tools_for(name, [*offered, skills.SKILL_TOOL] if skills.offers_tool(settings.get("skills"), found)
-                                    else offered)
-    permission = lab_settings.permission(settings, default_permission)
+    s = message_setup.build(settings, name, base_tools, facts, default_permission=default_permission, is_mcp=is_mcp,
+                            use_hooks=use_hooks)
+    # Unlike the page, a side trims only a history it carries on from (a re-run), never its own fresh run
     trim = settings.get("trim") or {}
     prepare = None
-    if history and trim.get("enabled") and name != "anthropic":  # trimming only matters with a history
+    if history and trim.get("enabled") and name != "anthropic":
         prepare = lambda msgs, k=trim.get("keep_last", 2): trimming.trim(msgs, keep_last=k)[0]  # noqa: E731
-    may = lab_settings.at_once(settings)
-    max_tokens, max_turns = lab_settings.limits(settings)
     return {"label": str(label or p["label"])[:60], "provider": name, "model": model, "client": client,
-            "system": system, "tools": tool_list, "permission": permission, "run": run,
-            "hooks": hooks_file.load() if use_hooks else None,
+            "system": s["system"], **message_setup.loop_args(s), "max_turns": s["max_turns"], "run": run,
             "cost": lambda usage, n=name, m=model: providers.cost(n, usage, m),
-            "history": history, "prepare": prepare,
-            "thinking": lab_settings.thinking_spec(settings, providers.thinking_style(name), providers.is_local(name)),
-            "cache": lab_settings.caching(settings), "allow_ask": allow_ask,
-            "max_tokens": max_tokens, "max_turns": max_turns,
-            "at_once": None if may is None else (lambda tool: may(tool) and not is_mcp(tool)),
-            "busy": lab_settings.busy(settings), "workflow_on": lab_settings.workflow(settings),
-            "extra_tools": lab_settings.extra_tools(settings),  # (run_one starts a Toolbox for each run)
-            "config": lab_settings.snapshot(settings, provider=name, label=p["label"], model=model, system=system,
-                                            facts_shared=len(memory.shared(list(facts))), tools=tool_list,
-                                            permission=permission, source=tool_source)}
+            "history": history, "prepare": prepare, "allow_ask": allow_ask,
+            "workflow_on": s["workflow"],
+            "extra_tools": s["extra_tools"],  # (run_one starts a Toolbox for each run)
+            "config": lab_settings.snapshot(settings, provider=name, label=p["label"], model=model, system=s["system"],
+                                            facts_shared=s["facts_shared"], tools=s["tools"],
+                                            permission=s["permission"], source=tool_source)}
 
 
 def run_one(client, model, text, system, tools, permission, cost=lambda usage: None, run=tools.run_tool,
@@ -74,9 +62,8 @@ def run_one(client, model, text, system, tools, permission, cost=lambda usage: N
     the harness refused (blocked, or needing an approval nobody can give here) is marked blocked.
     """
     started = time.time()
-    used, calls, read, wrote, spent = [], [], 0, 0, 0.0
-    priced = False
-    began = {}
+    tally = Tally()  # the calls, tokens, cost and tools, counted as Re-run counts a saved message
+    began = {}  # when the latest call was sent: the run's own (False) and its helper's (True)
     # The same events a conversation in the page records, so a side can be opened and inspected
     events = []
     helper = {"id": None, "call": 0}
@@ -91,50 +78,24 @@ def run_one(client, model, text, system, tools, permission, cost=lambda usage: N
     record("user", text=text)
 
     def watch(kind, sub=False, **data):
-        nonlocal read, wrote, spent, priced
         extra = {}
-        if kind == "request" and not sub:
-            cfg = config or {}
-            extra = {"provider": cfg.get("label") or label, "model": model, "facts": cfg.get("facts_shared", 0),
-                     "edited": cfg.get("edited", []), "trimmed": None,
-                     "tools": workflow.offered(cfg["tools"], data) if cfg.get("tools") is not None else None,
-                     "config": {k: v for k, v in cfg.items() if k != "tools"} or None,
-                     "hooks": hooks.describe() if hooks else None}
-            if box:  # the list can grow during the run (find_tool): what this call really sent
-                extra["tools"] = [{"name": t["name"], "description": t.get("description", ""),
-                                   "source": sources.get(t["name"], "built in"), "permission": permission(t["name"])}
-                                  for t in box.now()]
+        if kind == "request":
+            began[sub] = time.time()
+            if sub:
+                helper["call"] += 1
+            else:
+                extra = _request_details(data, config, label, model, hooks, box, sources, permission)
         if kind == "tool_call" and not sub:
             extra = {"source": sources.get(data["name"], "built in")}
             if data["name"] == "delegate":
                 helper.update(id=data.get("id"), call=0)
-        if sub and kind == "request":
-            helper["call"] += 1
-        if kind == "request":
-            began[sub] = time.time()
-        if kind == "tool_call" and not sub:
-            used.append({"id": data.get("id"), "name": data["name"], "input": data["input"]})
-        if kind == "tool_result" and not sub and data.get("outcome") in ("blocked", "unattended", "declined", "hook_blocked",
-                                                                   "not_run", "error"):
-            for t in used:
-                if t["id"] == (data.get("result") or {}).get("tool_use_id"):
-                    t["failed" if data["outcome"] == "error" else "blocked"] = True
-                    if data["outcome"] == "unattended":
-                        t["unattended"] = True  # nobody to ask: shown as "(not run)", scored as before
-                    t["outcome"] = data["outcome"]  # why: blocked, unattended, declined, hook_blocked, not_run or error
+            tally.tool_call(data.get("id"), data["name"], data["input"])
+        if kind == "tool_result" and not sub:
+            tally.tool_result((data.get("result") or {}).get("tool_use_id"), data.get("outcome"))
         if kind == "response":
-            u = data.get("usage")
-            u = {} if u is None else u if isinstance(u, dict) else u.model_dump()
-            read += ((u.get("input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
-                     + (u.get("cache_creation_input_tokens") or 0))
-            wrote += u.get("output_tokens") or 0
+            u = plain_usage(data.get("usage"))
             c = cost(u) if u else None
-            if c is not None:
-                spent += c
-                priced = True
-            calls.append({"turn": data.get("turn"), "sub": sub, "input_tokens": u.get("input_tokens") or 0,
-                          "cache_read": u.get("cache_read_input_tokens") or 0, "output_tokens": u.get("output_tokens") or 0,
-                          "cost": c, "seconds": round(time.time() - began.get(sub, started), 1)})
+            tally.response(u, c, data.get("turn"), sub, round(time.time() - began.get(sub, started), 1))
             extra = {**extra, "cost": c}
         if sub:
             record("sub", step=kind, helper=helper["id"], call=helper["call"], **data, **extra)
@@ -142,7 +103,7 @@ def run_one(client, model, text, system, tools, permission, cost=lambda usage: N
             data.pop("step_tools", None)  # (recorded as the call's "tools" above)
             record(kind, **data, **extra)
 
-    out = {"tools": used}
+    out = {}
     # Nobody can be asked during a comparison: "Ask first" tools aren't run (the loop says why), unless you
     # chose to let them run
     rule = (lambda name: "allow" if permission(name) == "ask" else permission(name)) if allow_ask else permission
@@ -172,11 +133,24 @@ def run_one(client, model, text, system, tools, permission, cost=lambda usage: N
         record("error", **err)
     record("done")
     out["events"], out["messages"] = events, to_json(messages)
-    for t in used:
-        t.pop("id", None)
-    out.update(seconds=round(time.time() - started, 1), tokens_read=read, tokens_written=wrote,
-               cost=spent if priced else None, calls=calls, allow_ask=allow_ask)
+    out.update(tally.figures(), seconds=round(time.time() - started, 1), allow_ask=allow_ask)
     return out
+
+
+def _request_details(data, config, label, model, hooks, box, sources, permission):
+    """What the page records with a side's own model call, beside the request itself: the setup it was sent
+    with and the tools it was offered (as a message in the page records them, so a side can be inspected)."""
+    cfg = config or {}
+    details = {"provider": cfg.get("label") or label, "model": model, "facts": cfg.get("facts_shared", 0),
+               "edited": cfg.get("edited", []), "trimmed": None,
+               "tools": workflow.offered(cfg["tools"], data) if cfg.get("tools") is not None else None,
+               "config": {k: v for k, v in cfg.items() if k != "tools"} or None,
+               "hooks": hooks.describe() if hooks else None}
+    if box:  # the list can grow during the run (find_tool): what this call really sent
+        details["tools"] = [{"name": t["name"], "description": t.get("description", ""),
+                             "source": sources.get(t["name"], "built in"), "permission": permission(t["name"])}
+                            for t in box.now()]
+    return details
 
 
 def _spread(values):
@@ -226,22 +200,14 @@ def save_side(result, text, prefix="Compare", origin=None, repeat=1, name=None):
     return conv_id
 
 
-def new_id():
-    return time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
-
-
 def save_comparison(cid, text, results, look_for="", repeat=1, kind="compare", conversation=None, seq=None):
     """Keep a comparison (question, sides, figures, the conversation behind each side) to open later.
     A re-run (`kind="rerun"`) also keeps which conversation and message it sent again."""
-    HISTORY.mkdir(parents=True, exist_ok=True)
     data = {"id": cid, "time": time.time(), "text": text, "look_for": look_for or "", "repeat": repeat,
             "kind": kind, "sides": to_json(results)}
     if kind == "rerun":
         data.update(conversation=conversation, seq=seq)
-    path = HISTORY / f"{cid}.json"
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(path)
+    saving.write_text(HISTORY / f"{cid}.json", json.dumps(data, ensure_ascii=False))
 
 
 def list_comparisons():
@@ -260,7 +226,7 @@ def list_comparisons():
 def load_comparison(cid):
     if not re.fullmatch(r"[0-9A-Za-z_-]+", str(cid)):
         raise FileNotFoundError(cid)
-    return json.loads((HISTORY / f"{cid}.json").read_text(encoding="utf-8"))
+    return json.loads(saving.inside(HISTORY, f"{cid}.json").read_text(encoding="utf-8"))
 
 
 def compare(sides, text, repeat=1, save=True, prefix="Compare", progress=None, cancel=None, cid=None):

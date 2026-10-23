@@ -1,7 +1,8 @@
 # Contributing
 
 Thanks for helping. The lab exists to make an AI harness easy to understand, so the best changes keep it
-small, readable and honest about what it shows.
+small, readable and honest about what it shows. Everyone taking part is expected to follow the
+[code of conduct](CODE_OF_CONDUCT.md).
 
 ## Before you start
 
@@ -11,7 +12,7 @@ small, readable and honest about what it shows.
 ## Set up
 
 Follow [Getting started](docs/getting-started.md): `setup.bat` makes the lab's Python folder and checks
-everything. Node.js is only needed if you change the page in [`ui/`](ui/).
+everything. Node.js 26 or newer is only needed if you change the page in [`ui/`](ui/).
 
 ## Guidelines
 
@@ -31,6 +32,7 @@ everything. Node.js is only needed if you change the page in [`ui/`](ui/).
 ```
 .venv\Scripts\python -m unittest discover -s tests
 cd ui
+npm install
 npm run typecheck
 npm test
 ```

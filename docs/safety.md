@@ -6,7 +6,9 @@ rules the harness applies, and their limits.
 ## Workspace
 
 The file tools work in [`workspace/`](../workspace/). Reading, listing or writing anywhere else needs your
-OK, so the model can't see the code, your saved conversations or your profile without asking.
+OK, so the model can't see the code, your saved conversations or your profile without asking. A path with a
+`:` anywhere but right after the drive letter (`notes.md:x` names a hidden extra part of a file, an
+"alternate data stream") is refused.
 
 ## Approvals
 
@@ -23,7 +25,8 @@ Re-run and evals too. The message that follows has an Undo.
 
 `run_python` is off until you turn on **Settings → Tools → Run code**, and it asks first, showing you the
 code: the code the model wrote, or, for a `.py` file in the workspace, what the file says at that moment. Any
-other path isn't opened before you decide (the model could name any file, such as a secrets file). If the
+other path isn't opened before you decide (the model could name any file, such as a secrets file), and a file
+that isn't a `.py` script isn't run at all, since you couldn't see what it says. If the
 file changes while you decide, it doesn't run. A script runs as you: it can read or change any of your files and reach the
 internet. The harness only:
 
@@ -76,12 +79,17 @@ every workspace file, `private/.env` included. They stay in `data/checkpoints/` 
 The mock runs `claude -p` on your Claude Code plan, and any web page you visit can send requests to programs
 on your computer. So the mock answers a request only if it is addressed to this computer (127.0.0.1), is sent
 as JSON, and carries the mock's key: a random key made each time the lab starts it, which only the harness
-knows. The lab's own web server already refuses requests addressed to any other name.
+knows. The lab's own web server already refuses requests addressed to any other name. Both use the same
+check, in [`harness/core/local_only.py`](../harness/core/local_only.py).
+
+The web page's server has no password. It listens only on this computer (127.0.0.1) and refuses requests
+from other websites, but another program, or another Windows user signed in to the same computer, could send
+it requests. Don't run the lab on a computer you share with people you don't trust.
 
 ## What leaves your computer
 
 - **Everything the model reads is sent to the provider.** With the mock, that means Anthropic, under your
-  Claude Code login; with DeepSeek, DeepSeek's servers; with the Anthropic API, Anthropic's API. The provider
+  Claude Code sign-in; with DeepSeek, DeepSeek's servers; with the Anthropic API, Anthropic's API. The provider
   menu above the message box says this under each provider. With Ollama or LM Studio on this computer, nothing
   leaves it; with an address on another computer (Settings → Model), everything goes to that computer, and the
   page says so.

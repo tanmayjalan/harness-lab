@@ -189,9 +189,10 @@ def cost(name, usage, model=None):
             + cached * rates["cached"] + out * rates["output"]) / 1_000_000
 
 
-class MissingKey(SystemExit):
+class MissingKey(Exception):
     """The provider can't be used yet (its key isn't set, or a local server has no address).
-    A SystemExit, so command-line scripts just print the message."""
+    An ordinary error, so `except Exception` catches it; the command-line start-ups (cli.py, evals.py and
+    the web server's) turn it into a plain message instead of a traceback."""
 
 
 def get_key(env_name):

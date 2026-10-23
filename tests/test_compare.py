@@ -13,7 +13,7 @@ from unittest import mock
 
 from anthropic.types import TextBlock, ToolUseBlock
 
-from harness.web import compare
+from harness.web import compare, conversations
 from harness.core import loop, tools
 
 
@@ -385,7 +385,8 @@ class HistoryTests(unittest.TestCase):
         s = conversations.run_stats({"id": "c", "events": events, "messages": []}, 0)
         self.assertEqual((s["answer"], s["seconds"], s["tokens_read"], s["model"], s["provider"]),
                          ("done", 2.5, 50, "m", "mock"))
-        self.assertEqual(s["tools"], [{"name": "write_file", "input": {}, "blocked": True}])
+        # (a saved run says why a tool didn't run, as a comparison side does)
+        self.assertEqual(s["tools"], [{"name": "write_file", "input": {}, "blocked": True, "outcome": "declined"}])
         self.assertEqual((s["approved"], s["waited"]), ([], 0))
         self.assertEqual(s["config"]["system"], "S")
         self.assertEqual(s["calls"][0]["seconds"], 1.0)
@@ -528,7 +529,7 @@ class CompareProgressTests(unittest.TestCase):
             NS(stop_reason="tool_use", content=[ToolUseBlock(type="tool_use", id="t1", name="write_file",
                                                             input={"path": str(target), "content": "x"})]),
             answer("couldn't"))
-        [result] = compare.compare([side("A", client)], "write it", cid=compare.new_id())
+        [result] = compare.compare([side("A", client)], "write it", cid=conversations.new_id())
         events = conversations.load(result["conversation"])["events"]
         call = next(e for e in events if e["kind"] == "tool_call")
         done = next(e for e in events if e["kind"] == "tool_result")
@@ -540,7 +541,7 @@ class CompareHistoryTests(unittest.TestCase):
     # F023: a comparison is kept, with its sides, and can be listed and opened again
     def test_a_comparison_is_saved_listed_and_loaded(self):
         client = ScriptedClient(answer("Paris."))
-        cid = compare.new_id()
+        cid = conversations.new_id()
         results = compare.compare([side("A", client)], "capital of France?", cid=cid)
         compare.save_comparison(cid, "capital of France?", results, look_for="Did it say Paris?", repeat=1)
         listed = compare.list_comparisons()
@@ -554,7 +555,7 @@ class CompareHistoryTests(unittest.TestCase):
     def test_each_saved_side_knows_its_comparison(self):
         from harness.web import conversations
         client = ScriptedClient(answer("Paris."))
-        cid = compare.new_id()
+        cid = conversations.new_id()
         [result] = compare.compare([side("A", client)], "capital?", cid=cid)
         saved = conversations.load(result["conversation"])
         self.assertEqual(saved["origin"], {"comparison": cid, "side": "A"})

@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
   "description": "The Harness lab web page. Built into ../harness/web/static, which the Python server serves.",
   "scripts": {
     "dev": "vite",

@@ -62,6 +62,22 @@ class SettingsReachTheModelTests(unittest.TestCase):
         self.assertEqual(sent["thinking"], {"type": "enabled", "budget_tokens": 2000})
         self.assertIn("cache_control", sent["system"][0])
 
+    # "Apply edits: from the next conversation" keeps the start the conversation began with, as in the page
+    def test_a_kept_start_applies_for_the_whole_conversation(self):
+        def system_sent(client):
+            s = client.requests[-1]["system"]
+            return s if isinstance(s, str) else s[0]["text"]
+        for apply, second in [("conversation", "Prompt A."), ("message", "Prompt B.")]:
+            with self.subTest(apply=apply):
+                client, start = Client(answer("one"), answer("two")), {}
+                history = [{"role": "user", "content": "hi"}]
+                cli.one_message(history, client, "mock", "m", settings(system="Prompt A.", apply=apply), [],
+                                say=lambda s: None, start=start)
+                history += [{"role": "assistant", "content": "one"}, {"role": "user", "content": "again"}]
+                cli.one_message(history, client, "mock", "m", settings(system="Prompt B.", apply=apply), [],
+                                say=lambda s: None, start=start)
+                self.assertTrue(system_sent(client).startswith(second))
+
     def test_the_call_limit_applies(self):
         roll = call("r", "roll_dice", sides=6)
         client = Client(roll, roll, roll)
@@ -123,7 +139,7 @@ class HookPrintingTests(unittest.TestCase):
 
     def run_with(self, my_hooks, *replies):
         client = Client(*replies)
-        with unittest.mock.patch.object(cli.hooks, "load", lambda *a: my_hooks):
+        with unittest.mock.patch.object(hooks, "load", lambda *a: my_hooks):
             return run(client, "go")
 
     def test_a_hook_block_says_the_hooks_reason(self):

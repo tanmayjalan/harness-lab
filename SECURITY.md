@@ -13,5 +13,10 @@ report it privately through GitHub:
 
 Please don't open a public issue for it. Include the steps to reproduce it and which provider you used.
 
+I aim to reply within 7 days. Only the latest `main` is supported.
+
 Known limits listed on the safety page (for example, that `run_python` is not a sandbox, or that the example
-hook's text check is easy to get around) are by design and don't need a report.
+hook's text check is easy to get around) are by design and don't need a report. One of them: the web page's
+server has no password. It listens only on this computer (127.0.0.1) and refuses requests from other websites,
+but another program, or another Windows user on the same computer, could send it requests. Don't run the lab
+on a computer you share with people you don't trust.

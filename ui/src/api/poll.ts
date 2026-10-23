@@ -11,36 +11,47 @@ export class PollClient {
   private timer: ReturnType<typeof setTimeout> | null = null
   private failures = 0
   private stopped = false
+  private asking = false // a request is out: only one at a time, or a second loop would start
+  private askAgain = false // asked for while one was out: ask again as soon as it returns
 
   constructor(private hooks: Hooks = {}, private fetchEvents = api.events) {}
 
   start() {
     this.stopped = false
-    this.tick()
+    this.now()
   }
 
   stop() {
     this.stopped = true
+    this.askAgain = false
     if (this.timer) clearTimeout(this.timer)
+    this.timer = null
   }
 
   // Ask again now (after sending a message, say) instead of waiting for the next tick
   now() {
+    if (this.asking) {
+      this.askAgain = true
+      return
+    }
     if (this.timer) clearTimeout(this.timer)
-    this.tick()
+    this.timer = null
+    void this.tick()
   }
 
   private async tick() {
     if (this.stopped) return
-    const store = useSession.getState()
+    this.timer = null
+    this.asking = true
     let delay: number
     try {
-      const wasLost = store.connection === 'lost'
+      const wasLost = useSession.getState().connection === 'lost'
       // After lost contact read everything again: what happened meanwhile (an approval still
       // waiting, a reply that finished) must come back, not only what's new
-      const snap = await this.fetchEvents(wasLost ? 0 : store.since)
+      const snap = await this.fetchEvents(wasLost ? 0 : useSession.getState().since)
       if (this.stopped) return
       this.failures = 0
+      const store = useSession.getState() // read after the wait: it may have changed meanwhile
       const connected = store.connection !== 'ok'
       if (connected) store.setConnection('ok')
       const { newConversation, finished } = useSession.getState().ingest(snap, wasLost)
@@ -56,7 +67,13 @@ export class PollClient {
       this.failures++
       if (this.failures >= 2) useSession.getState().setConnection('lost')
       delay = Math.min(5000, 500 * 2 ** (this.failures - 1))
+    } finally {
+      this.asking = false
     }
-    if (!this.stopped) this.timer = setTimeout(() => this.tick(), delay)
+    if (this.askAgain) {
+      this.askAgain = false
+      delay = 0
+    }
+    if (!this.stopped) this.timer = setTimeout(() => void this.tick(), delay)
   }
 }

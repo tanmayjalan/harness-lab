@@ -5,13 +5,14 @@ import { resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 const html = readFileSync(resolve(__dirname, '../index.html'), 'utf-8')
-const scripts = [...html.matchAll(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/g)]
-const boot = scripts.find((m) => !/type="module"/.test(m[1] ?? ''))
+// Read with a real HTML parser, as the browser does (not a pattern, which can miss a variant of </script>)
+const scripts = [...new DOMParser().parseFromString(html, 'text/html').querySelectorAll('script')]
+const boot = scripts.find((s) => s.type !== 'module')
 
 // Runs the inline script with a stand-in localStorage holding `stored` under the prefs key
 function run(stored: string | null) {
   const localStorage = { getItem: (k: string) => (k === 'harness-lab-prefs' ? stored : null) }
-  new Function('localStorage', boot![2])(localStorage)
+  new Function('localStorage', boot!.textContent ?? '')(localStorage)
   return document.documentElement.dataset.theme
 }
 const prefs = (theme: unknown) => JSON.stringify({ state: { theme, inspectorWidth: 440 }, version: 1 })
@@ -21,7 +22,7 @@ describe('the theme is set before the page draws', () => {
 
   it('index.html has an inline script before the module script', () => {
     expect(boot).toBeDefined()
-    const module = scripts.findIndex((m) => /type="module"/.test(m[1] ?? ''))
+    const module = scripts.findIndex((s) => s.type === 'module')
     expect(scripts.indexOf(boot!)).toBeLessThan(module)
   })
 

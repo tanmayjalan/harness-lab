@@ -3,11 +3,12 @@
 Run:  python -m unittest -v
 """
 import isolate  # noqa: F401  (keeps tests away from your real files)
+import os
 import pathlib
 import tempfile
 import unittest
 
-from harness.core import loop, tools
+from harness.core import tools
 from harness.core import toy_tools
 
 
@@ -96,6 +97,28 @@ class ToyToolTests(unittest.TestCase):
         self.assertNotIn("hunter2", found)                             # hidden files are never searched
         self.assertNotIn(".env", found)
         self.assertEqual(tools.run_tool("search_files", {"query": "zebra"}), "No files mention 'zebra'.")
+
+    # A folder shortcut inside the workspace (a Windows junction, which needs no admin rights) must not let
+    # search_files read what's outside: read_file on the same file asks first, so search must not see it
+    def test_search_never_follows_a_shortcut_out_of_the_workspace(self):
+        import subprocess
+        base = pathlib.Path(tempfile.mkdtemp())
+        root, outside = base / "ws", base / "out"
+        root.mkdir()
+        outside.mkdir()
+        (root / "notes.md").write_text("password policy: see IT", encoding="utf-8")
+        (outside / "secret.txt").write_text("password=hunter2", encoding="utf-8")
+        made = subprocess.run(["cmd", "/c", "mklink", "/J", str(root / "link"), str(outside)], capture_output=True)
+        if made.returncode != 0:
+            self.skipTest("couldn't make a junction here")
+        self.addCleanup(lambda: (root / "link").exists() and os.rmdir(root / "link"))  # the link only, not its target
+        old = tools.WORKSPACE
+        tools.WORKSPACE = root
+        self.addCleanup(setattr, tools, "WORKSPACE", old)
+        found = tools.run_tool("search_files", {"query": "password"})
+        self.assertIn("notes.md", found)
+        self.assertNotIn("hunter2", found)
+        self.assertNotIn("secret.txt", found)
 
     def test_expense_form_checks_its_shape(self):
         ok = toy_tools.submit_expense("2026-10-03", 38.5, "EUR", "travel", "taxi to the airport")

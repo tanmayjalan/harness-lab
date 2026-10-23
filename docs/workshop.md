@@ -27,8 +27,9 @@ one yourself.
 
 ## A two-hour path
 
-On the mock a model call took about 6 seconds when we measured it, and an experiment makes 1 to 5 calls, so
-each run takes well under a minute. The minutes below are rough planning figures for running, reading and
+On the mock each model call takes about 5 to 30 s, and most experiments make 1 to 5 calls, so a run takes from
+a few seconds to a couple of minutes. *A chain of agents* (the workflow) makes more calls and takes a minute or
+more. The minutes below are rough planning figures for running, reading and
 talking about each experiment, not measurements.
 
 **Core** experiments are the ones to do with everyone; **optional** ones are for fast attendees or another
@@ -76,7 +77,7 @@ settings or conversations, and nothing done there reaches your real `data/`, `co
 It copies `workspace/` as it is now, though, so restore the sample files first if they changed (next step);
 `-Fresh` warns you when it sees changed files.
 
-**Restore the sample files** (in a terminal, in the Harness folder):
+**Restore the sample files** (in a terminal, in the `harness-lab` folder):
 
 ```
 git status workspace

@@ -34,6 +34,27 @@ def files(folder):
     return {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8") for p in sorted(root.rglob("*")) if p.is_file()}
 
 
+class LinkTests(unittest.TestCase):
+    # Python 3.10 (still supported) has no os.path.isjunction and doesn't call a junction a link, so a check
+    # that relies on either misses junctions there, and search_files and Rewind would follow one out of the
+    # workspace. The check must work without it
+    def test_a_junction_is_a_link_even_without_os_path_isjunction(self):
+        import subprocess
+        base = pathlib.Path(tempfile.mkdtemp())
+        (base / "target").mkdir()
+        made = subprocess.run(["cmd", "/c", "mklink", "/J", str(base / "link"), str(base / "target")],
+                              capture_output=True)
+        if made.returncode != 0:
+            self.skipTest("couldn't make a junction here")
+        self.addCleanup(os.rmdir, base / "link")  # the link only, not its target
+        saved = getattr(os.path, "isjunction", None)
+        if saved is not None:
+            del os.path.isjunction  # as on Python 3.10
+            self.addCleanup(setattr, os.path, "isjunction", saved)
+        self.assertTrue(checkpoints._is_link(base / "link"))
+        self.assertFalse(checkpoints._is_link(base / "target"))
+
+
 class Copies(unittest.TestCase):
     """A fresh workspace and a fresh folder for the copies, for each test."""
 

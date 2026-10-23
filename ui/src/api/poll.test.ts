@@ -114,6 +114,57 @@ describe('PollClient', () => {
     p.stop()
   })
 
+  // Asking again while a request is still out must not start a second loop: one request at a time,
+  // and the asked-for one goes out as soon as the current one returns
+  it('now() during a request asks again right after it, never two at once', async () => {
+    let active = 0
+    let most = 0
+    const pending: (() => void)[] = []
+    const fetch = vi.fn(() => {
+      active++
+      most = Math.max(most, active)
+      return new Promise<Snapshot>((resolve) => pending.push(() => { active--; resolve(snap({})) }))
+    })
+    const p = new PollClient({}, fetch)
+    p.start()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    p.now() // while the first request is still out
+    expect(fetch).toHaveBeenCalledTimes(1)
+    pending.shift()!()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetch).toHaveBeenCalledTimes(2) // straight away, not after 500 ms
+    pending.shift()!()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(fetch).toHaveBeenCalledTimes(3)
+    pending.shift()!()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(fetch).toHaveBeenCalledTimes(4) // one loop: one request per 500 ms
+    expect(most).toBe(1)
+    p.stop()
+    pending.shift()!()
+  })
+
+  it('stop and start while a request is out keeps one loop', async () => {
+    let active = 0
+    let most = 0
+    const pending: (() => void)[] = []
+    const fetch = vi.fn(() => {
+      active++
+      most = Math.max(most, active)
+      return new Promise<Snapshot>((resolve) => pending.push(() => { active--; resolve(snap({})) }))
+    })
+    const p = new PollClient({}, fetch)
+    p.start()
+    p.stop()
+    p.start()
+    expect(most).toBe(1)
+    for (let i = 0; i < 4 && pending.length; i++) { pending.shift()!(); await vi.advanceTimersByTimeAsync(500) }
+    expect(fetch).toHaveBeenCalledTimes(5) // the first request, then one more each 500 ms
+    expect(most).toBe(1)
+    p.stop()
+    while (pending.length) pending.shift()!()
+  })
+
   // F088 and review focus 2: losing contact must not leave a live-looking run or an approval up
   it('losing contact clears the running state and the waiting approval, and re-reads everything after', async () => {
     const events = (declined as Snapshot['events']).slice(0, 5) // up to the approval

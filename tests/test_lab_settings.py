@@ -28,6 +28,41 @@ def save(changes, path):
 
 
 class CleanTests(unittest.TestCase):
+    # Saves at the same moment (a Settings change while a reply saves, say) must not fail on each other's
+    # half-done file
+    def test_saves_at_the_same_time_never_fail(self):
+        path = tmp_settings()
+        errors = []
+
+        def save_some(who):
+            for i in range(15):
+                try:
+                    save({"system": f"Prompt {who}-{i}"}, path)
+                except Exception as e:  # noqa: BLE001  (any failure is the bug)
+                    errors.append(repr(e))
+        threads = [threading.Thread(target=save_some, args=(n,)) for n in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(errors, [])
+        self.assertTrue(lab_settings.load(path)["system"].startswith("Prompt "))
+        self.assertEqual(list(path.parent.glob("*.tmp")), [])
+
+    # A damaged settings file (bad JSON, or JSON that isn't an object) is moved aside and reported, not used
+    def test_a_damaged_settings_file_is_moved_aside_and_reported(self):
+        from harness import saving
+        for text in ["{ not json", "[1, 2]"]:
+            with self.subTest(text=text):
+                path = tmp_settings()
+                path.write_text(text, encoding="utf-8")
+                saving.DAMAGED.clear()
+                self.addCleanup(saving.DAMAGED.clear)
+                self.assertEqual(lab_settings.load(path), lab_settings.empty())
+                aside = list(path.parent.glob("lab_settings.damaged-*.json"))
+                self.assertEqual([a.read_text(encoding="utf-8") for a in aside], [text])
+                self.assertIn(aside[0].name, saving.notes()[0])
+
     def test_only_real_changes_are_kept(self):
         path = tmp_settings()
         kept = save({
@@ -88,6 +123,21 @@ class CleanTests(unittest.TestCase):
         for bad in [[], {"permissions": {"read_file": "sometimes"}}, {"system": 42}]:
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 save(bad, tmp_settings())
+
+    def test_each_on_off_switch_says_its_own_name_and_the_first_bad_setting_is_reported(self):
+        for name in ("cache", "tools_at_once", "workflow", "run_code"):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, f'^{name} must be like {{"enabled": true}}$'):
+                save({name: True}, tmp_settings())
+        # Checked in a fixed order: the prompt, descriptions and permissions first, then the switches as listed
+        with self.assertRaisesRegex(ValueError, "^trim must be like"):
+            save({"limits": "x", "cache": True, "trim": "x"}, tmp_settings())
+        with self.assertRaisesRegex(ValueError, "^the system prompt"):
+            save({"trim": "x", "system": 42}, tmp_settings())
+
+    def test_a_setting_left_out_or_equal_to_its_default_is_not_kept(self):
+        self.assertEqual(lab_settings.clean({"trim": {"enabled": False}, "apply": "message", "system": loop.SYSTEM,
+                                             "limits": {"max_tokens": 16000, "max_turns": 20}},
+                                            loop.SYSTEM, tools.TOOLS, loop.default_permission), lab_settings.empty())
 
 
 class CapturingClient:
@@ -206,6 +256,16 @@ class SettingsHttpTests(unittest.TestCase):
         data = json.loads(r.read())
         conn.close()
         return r.status, data
+
+    def test_a_damaged_file_is_reported_to_the_page(self):
+        from harness import saving
+        saving.DAMAGED.clear()
+        self.addCleanup(saving.DAMAGED.clear)
+        self.path.write_text("{ not json", encoding="utf-8")
+        status, data = self.call("/settings")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["damaged"]), 1)
+        self.assertIn("lab_settings.damaged-", data["damaged"][0])
 
     def test_read_change_and_reset(self):
         status, data = self.call("/settings")

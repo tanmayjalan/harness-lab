@@ -10,7 +10,7 @@ from unittest import mock
 
 from anthropic.types import TextBlock
 
-from harness.core import loop, tools
+from harness.core import loop
 from harness.core import providers
 from harness.web import server as web_server
 
@@ -37,9 +37,27 @@ class env_without_keys:
 class ProviderTests(unittest.TestCase):
     def test_deepseek_without_a_key_explains_what_to_do(self):
         with env_without_keys():
-            with self.assertRaises(SystemExit) as caught:
+            with self.assertRaises(providers.MissingKey) as caught:
                 providers.make_client("deepseek")
         self.assertIn("DEEPSEEK_API_KEY", str(caught.exception))
+
+    # A missing key is an ordinary error: `except Exception` catches it (a SystemExit would slip past and end
+    # whatever thread it happened in). The command-line start-ups turn it into a plain message themselves
+    def test_a_missing_key_is_an_ordinary_error(self):
+        self.assertTrue(issubclass(providers.MissingKey, Exception))
+        self.assertFalse(issubclass(providers.MissingKey, SystemExit))
+
+    def test_the_terminal_version_says_a_key_is_missing_and_stops(self):
+        import contextlib
+        import io
+        from harness import cli
+        err = io.StringIO()
+        with env_without_keys(), mock.patch("sys.argv", ["cli", "--provider", "anthropic"]), \
+                contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as caught:
+                cli.main()
+        self.assertEqual(caught.exception.code, 1)
+        self.assertIn("ANTHROPIC_API_KEY", err.getvalue())
 
     def test_deepseek_uses_its_own_address_and_key(self):
         with env_without_keys(DEEPSEEK_API_KEY="sk-test", ANTHROPIC_API_KEY="other"):

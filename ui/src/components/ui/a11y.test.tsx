@@ -224,7 +224,7 @@ describe('more focus and labels', () => {
 
   // F125: better or worse in words, not colour alone
   it('Compare deltas say better or worse in words', async () => {
-    const { Delta } = await import('../compare/CompareScreen')
+    const { Delta } = await import('../compare/Delta')
     render(<Delta value={8} base={10} comparable runs={3} format={String} />)
     expect(screen.getByText('(better)')).toBeInTheDocument()
     expect(document.querySelector('svg.lucide-arrow-down')).toHaveAttribute('aria-hidden', 'true') // Task 8 (F330g): lucide, not ▼
@@ -264,7 +264,7 @@ describe('graphics (F283)', () => {
     expect(strokes).toContain('var(--line-strong)')
   })
   it('the made-of and time bars use full colours and keep them in high contrast', async () => {
-    const { PART_COLOURS, TIME_COLOURS } = await import('../inspector/Inspector')
+    const { PART_COLOURS, TIME_COLOURS } = await import('../inspector/colours')
     for (const c of [...Object.values(PART_COLOURS), ...Object.values(TIME_COLOURS)]) {
       expect(c).not.toMatch(/\//) // no faded colour
       expect(c).not.toBe('bg-line')

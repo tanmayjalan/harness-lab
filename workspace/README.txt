@@ -9,7 +9,7 @@ Play with these sample files, or add your own:
   scripts/totals.py      adds up budget.csv, but it has a bug: with Run code on, ask the model to run
                          it and fix it
   private/.env           FAKE secrets: the example hook blocks reading this
-  handbook/              26 short policies of a made-up company (try "What's our refund policy?":
+  handbook/              25 short policies of a made-up company (try "What's our refund policy?":
                          the search_files tool finds the right file without reading them all)
   inbox/supplier_email.txt  an ordinary email with an order hidden in it for the AI
                          (prompt injection: try "Summarise inbox/supplier_email.txt")

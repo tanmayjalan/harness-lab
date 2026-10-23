@@ -115,7 +115,7 @@ export function HelpSheet() {
             <section className="scroll-mt-4 space-y-2 outline-none" id="mock-limits" tabIndex={-1}>
               <h3 className="text-sm font-semibold">What the mock can and can't show</h3>
               <p className="text-sm text-muted">
-                The mock answers through claude -p on your Claude Code plan: no API key, no cost. It imitates a
+                The mock answers through claude -p on your Claude Code plan: no API key, no extra charge. It imitates a
                 real provider, so it is not the real API:
               </p>
               <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted">

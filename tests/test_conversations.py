@@ -38,6 +38,30 @@ def run(session, text):
         time.sleep(0.01)
 
 
+class SavingAtOnceTests(unittest.TestCase):
+    # Saves of the same conversation, or comparison, at the same moment must not fail on each other's
+    # temporary file
+    def test_saves_at_the_same_time_never_fail(self):
+        from harness.web import compare
+        cid, kid, errors = conversations.new_id(), "20261023-120000-abc123", []
+
+        def save_some(who):
+            for i in range(10):
+                try:
+                    conversations.save(cid, f"title {who}-{i}", [], [])
+                    compare.save_comparison(kid, "question", [])
+                except Exception as e:  # noqa: BLE001  (any failure is the bug)
+                    errors.append(repr(e))
+        threads = [threading.Thread(target=save_some, args=(n,)) for n in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(errors, [])
+        self.assertTrue(conversations.load(cid)["title"].startswith("title "))
+        self.assertEqual(list(conversations.DIR.glob("*.tmp")) + list(compare.HISTORY.glob("*.tmp")), [])
+
+
 class SavedConversationTests(unittest.TestCase):
     def test_saved_after_each_message_and_listed(self):
         s = web_server.Session(CountingClient(), "test")

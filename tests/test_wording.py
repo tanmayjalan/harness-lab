@@ -13,7 +13,7 @@ from types import SimpleNamespace as NS
 from anthropic.types import ToolUseBlock
 
 from harness import evals
-from harness.core import loop, tools
+from harness.core import loop
 from harness.web import compare
 from test_compare import ScriptedClient, answer, side
 import test_web_server

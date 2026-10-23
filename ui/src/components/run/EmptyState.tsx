@@ -171,7 +171,7 @@ export function EmptyState({ disabled }: { disabled: boolean }) {
         </p>
         {provider === 'mock' && (
           <p className="mx-auto max-w-xl text-sm text-muted">
-            You're on the mock (Claude Code's <code>claude -p</code>): free, but each model call takes about 5 to 30 s.
+            You're on the mock (Claude Code's <code>claude -p</code>): real Claude replies through your Claude Code plan, at no extra charge. Each model call takes about 5 to 30 s.
           </p>
         )}
       </div>

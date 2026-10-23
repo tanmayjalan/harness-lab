@@ -18,25 +18,34 @@ function plainStatus(status: number): string {
   return `The server refused the request (${status}).`
 }
 
-async function request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+// How long a read (GET) waits for the server: it answers those at once, so a longer wait means it is stuck.
+// Sending (POST) has no limit: starting a run, a comparison or a rerun can take minutes
+const READ_LIMIT_MS = 10_000
+// /info asks each local server (Ollama, LM Studio) for its models, so it can take longer on a working server
+const INFO_LIMIT_MS = 60_000
+
+async function request<T>(method: 'GET' | 'POST', path: string, body?: unknown, limitMs = READ_LIMIT_MS): Promise<T> {
   let res: Response
   try {
     res = await fetch(path, method === 'POST'
       ? { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }
-      : { method })
+      : { method, signal: AbortSignal.timeout(limitMs) })
   } catch {
     throw new ApiError(0, "Can't reach the server. Is start.bat still running?")
   }
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? plainStatus(res.status))
+  const unread = Symbol('unread')
+  const data = await res.json().catch(() => unread)
+  // An answer that can't be read (cut off by the time limit, say) is no answer, not an empty one
+  if (res.ok && data === unread) throw new ApiError(0, "Can't reach the server. Is start.bat still running?")
+  if (!res.ok) throw new ApiError(res.status, (data === unread ? {} : data as { error?: string }).error ?? plainStatus(res.status))
   return data as T
 }
 
-const get = <T>(path: string) => request<T>('GET', path)
+const get = <T>(path: string, limitMs?: number) => request<T>('GET', path, undefined, limitMs)
 const post = <T>(path: string, body?: unknown) => request<T>('POST', path, body)
 
 export const api = {
-  info: () => get<Info>('/info'),
+  info: () => get<Info>('/info', INFO_LIMIT_MS),
   events: (since: number) => get<Snapshot>(`/events?since=${since}`),
   profile: () => get<Profile>('/profile'),
   settings: () => get<Settings>('/settings'),

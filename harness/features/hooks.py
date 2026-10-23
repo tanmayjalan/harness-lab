@@ -26,9 +26,6 @@ class Hooks:
         return {"file": self.file, "functions": self.names(), "problem": self.problem}
 
 
-NONE = Hooks()
-
-
 def load(path=None):
     path = pathlib.Path(path or PATH)
     if not path.exists():

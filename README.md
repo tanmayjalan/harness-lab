@@ -11,7 +11,7 @@
 
 [Getting started](docs/getting-started.md) · [Learning path](docs/learning-path.md) · [Tour](docs/tour.md) · [How it's built](docs/architecture.md) · [Safety](docs/safety.md)
 
-![The Harness lab's start page: a short explanation of a harness, the loop diagram and the first experiments](docs/images/chat-start.png)
+![The Harness lab after one question: the conversation list on the left, the three model calls and the answer in the middle, and the Inspector on the right showing one call's time, cost and tokens](docs/images/chat-run.png)
 
 </div>
 
@@ -22,28 +22,44 @@ sends the model the conversation and a list of tools, runs the tools the model a
 results, and repeats until the model answers. Claude Code, coding assistants and "AI agents" are all
 harnesses.
 
-That repeat is **the loop**, and here it is about a hundred lines of Python: `agent()` in
+That repeat is **the loop**, and here it is about eighty lines of Python: `agent()` in
 [`harness/core/loop.py`](harness/core/loop.py). This lab wraps it in a web page that shows every model call,
 every tool run and every token, so you can see what a harness does instead of reading about it.
 
 ## Quick start
 
-You need Windows, Python 3.10+ and [Claude Code](https://claude.com/claude-code) installed and logged in. No
-API key is needed.
+You need Windows, Python 3.10+, git, and one of these to get replies from a model:
 
-1. Get the code:
+- a [Claude Code](https://claude.com/claude-code) plan, with Claude Code installed and signed in (the default);
+- an API key for the Anthropic API or DeepSeek (paid per use);
+- [Ollama](https://ollama.com) or [LM Studio](https://lmstudio.ai), free, running a model on your own computer.
+
+The default is the *mock*: real Claude replies, sent through Claude Code (`claude -p`) instead of the API. It
+uses your Claude Code plan, at no extra charge.
+
+Windows only, because `setup.bat`, `start.bat` and `stop.bat` are Windows batch files that run PowerShell
+scripts and use the `.venv\Scripts` folder Python makes on Windows. The Python code isn't known to fail
+elsewhere, but it hasn't been tried there.
+
+1. Get the code (it makes a `harness-lab` folder):
    ```
    git clone https://github.com/tanmayjalan/harness-lab.git
    cd harness-lab
    ```
-2. Run **`setup.bat`**. It makes the lab's Python folder, installs the packages and checks everything.
-3. Run **`start.bat`**. The page opens at http://127.0.0.1:8000. **`stop.bat`** stops it.
+2. Run **`.\setup.bat`**. It makes the lab's Python folder, installs the packages and checks everything. It
+   also offers to save API keys: that's optional, and Enter skips it.
+3. Run **`.\start.bat`**. The page opens at http://127.0.0.1:8000. **`.\stop.bat`** stops it.
+4. Click **Watch the loop**. On the mock each model call takes about 5 to 30 s, and the page shows each call
+   as it happens.
 
-By default replies come from `claude -p` on your Claude Code plan (the *mock*). With an API key you can use
-the Anthropic API or DeepSeek instead: `start.bat -Provider anthropic`. Or run a free model on your own
-computer with [Ollama](https://ollama.com) or [LM Studio](https://lmstudio.ai): `start.bat -Provider ollama`. See
-[Getting started](docs/getting-started.md) for every option, and
-[If something goes wrong](docs/getting-started.md#if-something-goes-wrong) if a step fails.
+(Type the `.\` in PowerShell, Windows Terminal's usual shell: there a plain `setup.bat` isn't found.)
+
+With an API key, start with `.\start.bat -Provider anthropic` (or `deepseek`). With Ollama or LM Studio,
+`.\start.bat -Provider ollama` (or `lmstudio`). See [Getting started](docs/getting-started.md) for every
+option, and [If something goes wrong](docs/getting-started.md#if-something-goes-wrong) if a step fails.
+
+**Getting help:** read the [documentation](docs/README.md), or open an issue with the
+[Question](https://github.com/tanmayjalan/harness-lab/issues/new/choose) template.
 
 ## What you can try
 
@@ -84,16 +100,8 @@ The full map, with one line per file, is in [How it's built](docs/architecture.m
 
 ## Documentation
 
-| | |
-|---|---|
-| [Getting started](docs/getting-started.md) | install, start, stop, providers |
-| [A learning path](docs/learning-path.md) | the experiments, in order |
-| [Running a workshop](docs/workshop.md) | a two-hour path, the day-before checklist, resetting between demos |
-| [A tour of the page](docs/tour.md) | what each part of the page shows |
-| [How it's built](docs/architecture.md) | the code, file by file; the workflow's two loops |
-| [Safety rules](docs/safety.md) | the workspace, approvals, running code, hooks, Rewind |
-| [What the mock can't show](docs/limitations.md) | estimates and what hasn't been tried live |
-| [Development](docs/development.md) | terminal version, evals, tests, working on the page |
+Every page, with what each is for, is listed in [the documentation index](docs/README.md). What changed
+recently is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Safety, in short
 
@@ -103,8 +111,8 @@ Allow. Everything the model reads is sent to the provider you chose. Details in 
 
 ## Contributing
 
-Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). To report a security problem,
-see [SECURITY.md](SECURITY.md).
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[code of conduct](CODE_OF_CONDUCT.md). To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## License
 

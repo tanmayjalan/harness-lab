@@ -34,34 +34,33 @@ function Test-Port($port) {
     try { $client.Connect("127.0.0.1", $port); return $true } catch { return $false } finally { $client.Close() }
 }
 
-# First run: create the private Python environment and install what's needed
+# The lab's Python folder (.venv) is made by setup.bat, which also checks Python's version and everything else
 if (-not (Test-Path $python)) {
-    Write-Host "Setting up .venv (first run only)..."
-    python -m venv .venv
-    & $python -m pip install -q -r requirements.txt
+    Write-Host "First time? Run setup.bat first: it makes the lab's Python folder (.venv) and checks everything." -ForegroundColor Yellow
+    exit 1
 }
 
-# The page is built from ui\ into harness\web\static (that build is kept in the repo, so Node.js
-# is only needed if you change the page). Rebuild when a ui\ file is newer than the build.
+# The page is built from ui\ into harness\web\static, and that build is kept in the repo, so Node.js is only
+# needed to change the page. Rebuild only for someone working on it: ui\node_modules exists (they ran
+# npm install) and a ui\ file is newer than the build. (A fresh clone makes every ui\ file look newer, so the
+# times alone can't decide.)
 $built = "harness\web\static\index.html"
-if (-not $NoBuild -and (Test-Path "ui\package.json")) {
+if (-not $NoBuild -and (Test-Path "ui\node_modules")) {
     $builtAt = if (Test-Path $built) { (Get-Item $built).LastWriteTime } else { [datetime]::MinValue }
     $newer = Get-ChildItem ui -Recurse -File |
         Where-Object { $_.FullName -notmatch '\\node_modules\\' -and $_.LastWriteTime -gt $builtAt } |
         Select-Object -First 1
-    if ($newer) {
-        if (Get-Command npm -ErrorAction SilentlyContinue) {
-            Write-Host "Building the page (ui\ changed)..."
-            Push-Location ui
-            try {
-                if (-not (Test-Path node_modules)) { npm install --no-fund --no-audit | Out-Host }
-                npm run build | Out-Host
-                if ($LASTEXITCODE -ne 0) { Write-Host "The page didn't build; starting with the last build." -ForegroundColor Yellow }
-            } finally { Pop-Location }
-        } elseif (-not (Test-Path $built)) {
-            Write-Host "The page isn't built and npm wasn't found. Install Node.js, or run with the built page from git." -ForegroundColor Yellow
-        }
+    if ($newer -and (Get-Command npm -ErrorAction SilentlyContinue)) {
+        Write-Host "Building the page (ui\ changed)..."
+        Push-Location ui
+        try {
+            npm run build | Out-Host
+            if ($LASTEXITCODE -ne 0) { Write-Host "The page didn't build; starting with the last build." -ForegroundColor Yellow }
+        } finally { Pop-Location }
     }
+}
+if (-not (Test-Path $built)) {
+    Write-Host "The page isn't built. Get it again from git, or build it: npm install, then npm run build, in ui\." -ForegroundColor Yellow
 }
 
 if (Test-Port 8000) {

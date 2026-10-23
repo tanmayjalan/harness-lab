@@ -62,10 +62,10 @@ def ask_text(name, args, outside=False):
     """The yes/no question shown before a tool that needs approval."""
     where = f" That is OUTSIDE the workspace ({tools.WORKSPACE})." if outside else ""
     if name == "write_file":
-        return f"\n  The model wants to write {len(args['content'])} characters to {tools.resolve(args['path'])}.{where} Allow? [y/N] "
+        return f"\n  The model wants to write {len(args['content'])} characters to {tools.where(args['path'])}.{where} Allow? [y/N] "
     if name in tools.FILE_TOOLS:
         verb = "list the folder" if name == "list_files" else "read the file"
-        return f"\n  The model wants to {verb} {tools.resolve(args['path'])}.{where} Allow? [y/N] "
+        return f"\n  The model wants to {verb} {tools.where(args['path'])}.{where} Allow? [y/N] "
     if name == "remember_fact":
         return f"\n  The model wants to remember about you: {args.get('label')}: {args.get('value')}. Allow? [y/N] "
     if name == "run_python":  # show the code itself: it runs as you, with your files (not a sandbox)
@@ -74,7 +74,7 @@ def ask_text(name, args, outside=False):
             body = (f"    (the file {shown['error']})" if "error" in shown
                     else "\n".join("    " + line for line in shown["text"].splitlines()))
             cut = "\n    (… the rest isn't shown)" if shown.get("cut") else ""
-            return (f"\n  The model wants to run the Python script {tools.resolve(args['path'])}.{where}"
+            return (f"\n  The model wants to run the Python script {tools.where(args['path'])}.{where}"
                     f" It says now (it could still change before it runs):\n{body}{cut}\n  Allow? [y/N] ")
         code = "\n".join("    " + line for line in str(args.get("code", "")).splitlines())
         return f"\n  The model wants to run this Python code (as you, from the workspace folder):\n{code}\n  Allow? [y/N] "
@@ -128,6 +128,39 @@ def simulated_busy():
                                headers={"retry-after": "1"})
     return anthropic.OverloadedError("Error code: 529 - simulated by the practice switch (Settings → Model)",
                                      response=response, body=None)
+
+
+def _send(client, request, turn, stream, busy, on_event, should_stop):
+    """One model call, tried again (at most RETRIES more times) when retry_reason says it's worth it, with a
+    "retry" event each time. Returns the model's reply. `stream`: pass the reply's text on in pieces as it
+    arrives. `busy`: the practice switch, which fails the first try before anything is sent."""
+    for attempt in range(RETRIES + 1):
+        started_text = False
+        try:
+            if busy and attempt == 0:
+                raise simulated_busy()  # the practice switch: fails before anything is sent
+            if stream and hasattr(client.messages, "stream"):  # (simple test stand-ins can't stream)
+                # The reply arrives in small pieces; pass each piece of text on as it comes,
+                # then use the complete reply exactly as if it had arrived all at once
+                with client.messages.stream(**request) as s:
+                    for piece in s.text_stream:
+                        started_text = True
+                        on_event("text", text=piece)
+                    return s.get_final_message()
+            return client.messages.create(**request)
+        except Exception as e:
+            why = retry_reason(e)
+            # (a reply that already started arriving isn't sent again: you've seen part of it)
+            if why is None or attempt == RETRIES or started_text:
+                raise
+            wait = retry_wait(e, attempt + 1)
+            on_event("retry", turn=turn, attempt=attempt + 1, status=why[0], reason=why[1], wait=wait,
+                     simulated=bool(busy and attempt == 0))
+            until = time.time() + wait
+            while time.time() < until:  # Stop works while waiting too
+                if should_stop():
+                    raise Stopped("Stopped by the user")
+                time.sleep(min(0.1, max(0.0, until - time.time())))
 
 
 class Stopped(Exception):
@@ -193,6 +226,19 @@ def not_offered(block, offered):
             if "find_tool" in offered else "")
     return _result(block, f"Not run: {block.name} wasn't offered to you on this call, so the harness didn't run it. "
                           f"Use only the tools you were given.{hint}", is_error=True), "not_run"
+
+
+def _answer_cut_off_requests(response, messages, on_event):
+    """A reply cut off (max_tokens, say) while writing a tool request still needs an answer for that request, or
+    the next message would be refused: add a "Not run" result for each one to the history."""
+    unfinished = [b for b in response.content if b.type == "tool_use"]
+    if not unfinished:
+        return
+    cut = [_result(b, f"Not run: the reply was cut off ({response.stop_reason}) before this request "
+                      "was complete.", is_error=True) for b in unfinished]
+    messages.append({"role": "user", "content": cut})
+    for r in cut:
+        on_event("tool_result", result=r, outcome="not_run")
 
 
 def _before(block, permission, confirm, hooks, on_event, offered=None):
@@ -360,35 +406,8 @@ def agent(messages, client, max_turns=20, confirm=input, on_event=ignore_event, 
                  thinking=request.get("thinking"), output_config=request.get("output_config"), cache=bool(cache),
                  api_body={k: v for k, v in request.items() if k != "messages"},
                  streamed=bool(stream and hasattr(client.messages, "stream")))
-        for attempt in range(RETRIES + 1):
-            started_text = False
-            try:
-                if busy and attempt == 0:
-                    raise simulated_busy()  # the practice switch: fails before anything is sent
-                if stream and hasattr(client.messages, "stream"):  # (simple test stand-ins can't stream)
-                    # The reply arrives in small pieces; pass each piece of text on as it comes,
-                    # then use the complete reply exactly as if it had arrived all at once
-                    with client.messages.stream(**request) as s:
-                        for piece in s.text_stream:
-                            started_text = True
-                            on_event("text", text=piece)
-                        response = s.get_final_message()
-                else:
-                    response = client.messages.create(**request)
-                break
-            except Exception as e:
-                why = retry_reason(e)
-                # (a reply that already started arriving isn't sent again: you've seen part of it)
-                if why is None or attempt == RETRIES or started_text:
-                    raise
-                wait = retry_wait(e, attempt + 1)
-                on_event("retry", turn=turn, attempt=attempt + 1, status=why[0], reason=why[1], wait=wait,
-                         simulated=bool(busy and attempt == 0))
-                until = time.time() + wait
-                while time.time() < until:  # Stop works while waiting too
-                    if should_stop():
-                        raise Stopped("Stopped by the user")
-                    time.sleep(min(0.1, max(0.0, until - time.time())))
+        # Send it, trying again if the service is busy or briefly down
+        response = _send(client, request, turn, stream, busy, on_event, should_stop)
         # Keep the model's full reply (including its tool requests) in the history
         messages.append({"role": "assistant", "content": response.content})
         usage = getattr(response, "usage", None)
@@ -396,16 +415,8 @@ def agent(messages, client, max_turns=20, confirm=input, on_event=ignore_event, 
                  usage=usage, prompt_cut=prompt_cut(request, usage))
 
         if response.stop_reason != "tool_use":
-            # "end_turn" is the normal finish; "max_tokens" or "refusal" means it stopped early.
-            # A reply cut off while writing a tool request still needs an answer for that request,
-            # or the next message would be refused: say it wasn't run.
-            unfinished = [b for b in response.content if b.type == "tool_use"]
-            if unfinished:
-                cut = [_result(b, f"Not run: the reply was cut off ({response.stop_reason}) before this request "
-                                  "was complete.", is_error=True) for b in unfinished]
-                messages.append({"role": "user", "content": cut})
-                for r in cut:
-                    on_event("tool_result", result=r, outcome="not_run")
+            # "end_turn" is the normal finish; "max_tokens" or "refusal" means it stopped early
+            _answer_cut_off_requests(response, messages, on_event)
             text = "".join(b.text for b in response.content if b.type == "text")
             if response.stop_reason != "end_turn":
                 text += f"\n[stopped early: {response.stop_reason}]"

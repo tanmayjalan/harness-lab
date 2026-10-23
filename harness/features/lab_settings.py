@@ -7,7 +7,7 @@ stores what you changed, so "reset to default" just removes your change.
 import json
 import pathlib
 
-from harness import paths
+from harness import paths, saving
 
 PATH = paths.DATA / "lab_settings.json"
 RULES = ("allow", "ask", "block")
@@ -22,146 +22,177 @@ def empty():
 
 def load(path=None):
     path = path or PATH
-    try:
-        data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return empty()
+    # Read, check and (if damaged) move aside as one step, so a load at the same moment waits and then finds
+    # no file, instead of trying to move it too
+    with saving.lock_for(path):
+        try:
+            text = saving.read_text(path)
+        except FileNotFoundError:
+            return empty()
+        try:
+            data = json.loads(text)
+            if not isinstance(data, dict):
+                raise ValueError("it isn't a JSON object")
+        except ValueError as e:  # damaged: kept aside, not overwritten by the next save
+            saving.set_aside(path, e)
+            return empty()
     return {**empty(), **data}
 
 
 def clean(settings, base_system, base_tools, default_permission):
-    """Keep only real changes (anything equal to the default is dropped). Raises ValueError on bad input."""
+    """Keep only real changes (anything equal to the default is dropped). Raises ValueError on bad input.
+    Each setting has its own small checker below; they run in this order, so the first bad one is reported."""
     if not isinstance(settings, dict):
         raise ValueError("settings must be an object")
     defaults = {t["name"]: t.get("description", "") for t in base_tools}
     out = empty()
+    if settings.get("system") is not None:
+        out["system"] = _system(settings["system"], base_system)
+    out["descriptions"] = _descriptions(settings.get("descriptions") or {}, defaults)
+    out["permissions"] = _permissions(settings.get("permissions") or {}, defaults, default_permission)
+    for key, check in CHECKERS.items():
+        if settings.get(key) is not None:  # (a setting left out stays at its default)
+            out[key] = check(settings[key])
+    return out
 
-    system = settings.get("system")
-    if system is not None:
-        if not isinstance(system, str) or len(system) > 20000:
-            raise ValueError("the system prompt must be text, at most 20,000 characters")
-        if system.strip() and system.strip() != base_system.strip():
-            out["system"] = system.strip()
 
-    for name, text in (settings.get("descriptions") or {}).items():
+def _system(system, base_system):
+    if not isinstance(system, str) or len(system) > 20000:
+        raise ValueError("the system prompt must be text, at most 20,000 characters")
+    if system.strip() and system.strip() != base_system.strip():
+        return system.strip()
+    return None
+
+
+def _descriptions(descriptions, defaults):
+    out = {}
+    for name, text in descriptions.items():
         if name not in defaults:
             continue  # a tool that no longer exists
         if not isinstance(text, str) or len(text) > 4000:
             raise ValueError(f"the description for {name} must be text, at most 4,000 characters")
         if text.strip() and text.strip() != defaults[name].strip():
-            out["descriptions"][name] = text.strip()
+            out[name] = text.strip()
+    return out
 
-    for name, rule in (settings.get("permissions") or {}).items():
+
+def _permissions(permissions, defaults, default_permission):
+    out = {}
+    for name, rule in permissions.items():
         if name not in defaults:
             continue
         if rule not in RULES:
             raise ValueError(f"permission for {name} must be one of {', '.join(RULES)}")
         if rule != default_permission(name):
-            out["permissions"][name] = rule
-
-    trim = settings.get("trim")  # off unless you turn it on
-    if trim is not None:
-        if not isinstance(trim, dict) or not isinstance(trim.get("keep_last", 2), int) \
-                or not 0 <= trim.get("keep_last", 2) <= 20:
-            raise ValueError("trim must be like {\"enabled\": true, \"keep_last\": 2} (keep_last 0-20)")
-        if trim.get("enabled"):
-            out["trim"] = {"enabled": True, "keep_last": trim.get("keep_last", 2)}
-        elif trim.get("keep_last", 2) != 2:  # off, but keep the number you typed for when you turn it on
-            out["trim"] = {"enabled": False, "keep_last": trim["keep_last"]}
-
-    compact = settings.get("compact")  # summarising old history: off unless you turn it on
-    if compact is not None:
-        over = compact.get("over_chars", 40000) if isinstance(compact, dict) else None
-        if not isinstance(over, int) or not 2000 <= over <= 1_000_000:
-            raise ValueError("compact must be like {\"enabled\": true, \"over_chars\": 40000} (2,000-1,000,000)")
-        if compact.get("enabled"):
-            out["compact"] = {"enabled": True, "over_chars": over}
-        elif over != 40000:  # off, but keep the number you typed for when you turn it on
-            out["compact"] = {"enabled": False, "over_chars": over}
-
-    thinking = settings.get("thinking")  # the model reasons before answering: off unless you turn it on
-    if thinking is not None:
-        budget = thinking.get("budget", 4000) if isinstance(thinking, dict) else None
-        effort = thinking.get("effort", "medium") if isinstance(thinking, dict) else None
-        if not isinstance(budget, int) or not 1024 <= budget <= 12000 or effort not in EFFORTS:
-            raise ValueError("thinking must be like {\"enabled\": true, \"budget\": 4000, \"effort\": \"medium\"} "
-                             "(1,024-12,000 tokens; effort low, medium, high, xhigh or max)")
-        if thinking.get("enabled"):
-            out["thinking"] = {"enabled": True, "budget": budget, "effort": effort}
-
-    cache = settings.get("cache")  # prompt caching: off unless you turn it on
-    if cache is not None:
-        if not isinstance(cache, dict):
-            raise ValueError("cache must be like {\"enabled\": true}")
-        if cache.get("enabled"):
-            out["cache"] = {"enabled": True}
-
-    skill = settings.get("skills")  # skills (features/skills.py): off unless you turn them on
-    if skill is not None:
-        mode = skill.get("mode", "on_demand") if isinstance(skill, dict) else None
-        if mode not in ("on_demand", "all_in_prompt"):
-            raise ValueError('skills must be like {"enabled": true, "mode": "on_demand"} (or "all_in_prompt")')
-        if skill.get("enabled"):
-            out["skills"] = {"enabled": True, "mode": mode}
-
-    at_once_setting = settings.get("tools_at_once")  # run a reply's tools at the same time: off unless you turn it on
-    if at_once_setting is not None:
-        if not isinstance(at_once_setting, dict):
-            raise ValueError('tools_at_once must be like {"enabled": true}')
-        if at_once_setting.get("enabled"):
-            out["tools_at_once"] = {"enabled": True}
-
-    flow = settings.get("workflow")  # answer each message with a fixed chain of agents: off unless you turn it on
-    if flow is not None:
-        if not isinstance(flow, dict):
-            raise ValueError('workflow must be like {"enabled": true}')
-        if flow.get("enabled"):
-            out["workflow"] = {"enabled": True}
-
-    run = settings.get("run_code")  # offer the run_python tool: off unless you turn it on
-    if run is not None:
-        if not isinstance(run, dict):
-            raise ValueError('run_code must be like {"enabled": true}')
-        if run.get("enabled"):
-            out["run_code"] = {"enabled": True}
-
-    extra = settings.get("extra_tools")  # 40 office tools, all sent or found on demand: off unless you turn it on
-    if extra is not None:
-        mode = extra.get("mode", "find") if isinstance(extra, dict) else None
-        if mode not in ("all", "find"):
-            raise ValueError('extra_tools must be like {"enabled": true, "mode": "find"} (or "all")')
-        if extra.get("enabled"):
-            out["extra_tools"] = {"enabled": True, "mode": mode}
-
-    faults = settings.get("faults")  # practice: make the service look busy (Settings → Model)
-    if faults is not None:
-        if not isinstance(faults, dict) or not isinstance(faults.get("busy", False), bool):
-            raise ValueError('faults must be like {"busy": true}')
-        if faults.get("busy"):
-            out["faults"] = {"busy": True}
-
-    # When prompt and tool edits take effect: from your next message (the default) or only from
-    # your next conversation, so a conversation keeps one fixed start (better for the cache)
-    apply = settings.get("apply")
-    if apply is not None:
-        if apply not in ("message", "conversation"):
-            raise ValueError('apply must be "message" or "conversation"')
-        if apply == "conversation":
-            out["apply"] = "conversation"
-
-    # Limits: the longest reply (max_tokens) and the most model calls for one message (max_turns)
-    lim = settings.get("limits")
-    if lim is not None:
-        if not isinstance(lim, dict):
-            raise ValueError('limits must be like {"max_tokens": 16000, "max_turns": 20}')
-        mt, turns = lim.get("max_tokens", DEFAULT_MAX_TOKENS), lim.get("max_turns", DEFAULT_MAX_TURNS)
-        if not isinstance(mt, int) or not 256 <= mt <= 16000:
-            raise ValueError("the longest reply must be 256-16,000 tokens")
-        if not isinstance(turns, int) or not 2 <= turns <= 20:
-            raise ValueError("the most calls per message must be 2-20")
-        if (mt, turns) != (DEFAULT_MAX_TOKENS, DEFAULT_MAX_TURNS):
-            out["limits"] = {"max_tokens": mt, "max_turns": turns}
+            out[name] = rule
     return out
+
+
+def _trim(trim):
+    """Trimming old tool results: off unless you turn it on."""
+    if not isinstance(trim, dict) or not isinstance(trim.get("keep_last", 2), int) \
+            or not 0 <= trim.get("keep_last", 2) <= 20:
+        raise ValueError("trim must be like {\"enabled\": true, \"keep_last\": 2} (keep_last 0-20)")
+    if trim.get("enabled"):
+        return {"enabled": True, "keep_last": trim.get("keep_last", 2)}
+    if trim.get("keep_last", 2) != 2:  # off, but keep the number you typed for when you turn it on
+        return {"enabled": False, "keep_last": trim["keep_last"]}
+    return None
+
+
+def _compact(compact):
+    """Summarising old history: off unless you turn it on."""
+    over = compact.get("over_chars", 40000) if isinstance(compact, dict) else None
+    if not isinstance(over, int) or not 2000 <= over <= 1_000_000:
+        raise ValueError("compact must be like {\"enabled\": true, \"over_chars\": 40000} (2,000-1,000,000)")
+    if compact.get("enabled"):
+        return {"enabled": True, "over_chars": over}
+    if over != 40000:  # off, but keep the number you typed for when you turn it on
+        return {"enabled": False, "over_chars": over}
+    return None
+
+
+def _thinking(thinking):
+    """The model reasons before answering: off unless you turn it on."""
+    budget = thinking.get("budget", 4000) if isinstance(thinking, dict) else None
+    effort = thinking.get("effort", "medium") if isinstance(thinking, dict) else None
+    if not isinstance(budget, int) or not 1024 <= budget <= 12000 or effort not in EFFORTS:
+        raise ValueError("thinking must be like {\"enabled\": true, \"budget\": 4000, \"effort\": \"medium\"} "
+                         "(1,024-12,000 tokens; effort low, medium, high, xhigh or max)")
+    if thinking.get("enabled"):
+        return {"enabled": True, "budget": budget, "effort": effort}
+    return None
+
+
+def _switch(name):
+    """The checker for a setting that is only on or off, like {"enabled": true}: off unless you turn it on."""
+    def check(value):
+        if not isinstance(value, dict):
+            raise ValueError(f'{name} must be like {{"enabled": true}}')
+        return {"enabled": True} if value.get("enabled") else None
+    return check
+
+
+def _skills(skill):
+    """Skills (features/skills.py): off unless you turn them on."""
+    mode = skill.get("mode", "on_demand") if isinstance(skill, dict) else None
+    if mode not in ("on_demand", "all_in_prompt"):
+        raise ValueError('skills must be like {"enabled": true, "mode": "on_demand"} (or "all_in_prompt")')
+    return {"enabled": True, "mode": mode} if skill.get("enabled") else None
+
+
+def _extra_tools(extra):
+    """40 office tools, all sent or found on demand: off unless you turn it on."""
+    mode = extra.get("mode", "find") if isinstance(extra, dict) else None
+    if mode not in ("all", "find"):
+        raise ValueError('extra_tools must be like {"enabled": true, "mode": "find"} (or "all")')
+    return {"enabled": True, "mode": mode} if extra.get("enabled") else None
+
+
+def _faults(faults):
+    """Practice: make the service look busy (Settings → Model)."""
+    if not isinstance(faults, dict) or not isinstance(faults.get("busy", False), bool):
+        raise ValueError('faults must be like {"busy": true}')
+    return {"busy": True} if faults.get("busy") else None
+
+
+def _apply(apply):
+    """When prompt and tool edits take effect: from your next message (the default) or only from your next
+    conversation, so a conversation keeps one fixed start (better for the cache)."""
+    if apply not in ("message", "conversation"):
+        raise ValueError('apply must be "message" or "conversation"')
+    return "conversation" if apply == "conversation" else None
+
+
+def _limits(lim):
+    """The longest reply (max_tokens) and the most model calls for one message (max_turns)."""
+    if not isinstance(lim, dict):
+        raise ValueError('limits must be like {"max_tokens": 16000, "max_turns": 20}')
+    mt, turns = lim.get("max_tokens", DEFAULT_MAX_TOKENS), lim.get("max_turns", DEFAULT_MAX_TURNS)
+    if not isinstance(mt, int) or not 256 <= mt <= 16000:
+        raise ValueError("the longest reply must be 256-16,000 tokens")
+    if not isinstance(turns, int) or not 2 <= turns <= 20:
+        raise ValueError("the most calls per message must be 2-20")
+    if (mt, turns) != (DEFAULT_MAX_TOKENS, DEFAULT_MAX_TURNS):
+        return {"max_tokens": mt, "max_turns": turns}
+    return None
+
+
+# The checker for each of the other settings, in the order clean() runs them
+CHECKERS = {
+    "trim": _trim,
+    "compact": _compact,
+    "thinking": _thinking,
+    "cache": _switch("cache"),                  # prompt caching
+    "skills": _skills,
+    "tools_at_once": _switch("tools_at_once"),  # run a reply's tools at the same time
+    "workflow": _switch("workflow"),            # answer each message with a fixed chain of agents
+    "run_code": _switch("run_code"),            # offer the run_python tool
+    "extra_tools": _extra_tools,
+    "faults": _faults,
+    "apply": _apply,
+    "limits": _limits,
+}
 
 
 DEFAULT_MAX_TOKENS, DEFAULT_MAX_TURNS = 16000, 20
@@ -238,13 +269,12 @@ def save(settings, base_system, base_tools, default_permission, path=None):
     path = path or PATH
     settings = clean(settings, base_system, base_tools, default_permission)
     path = pathlib.Path(path)
-    if settings == empty():
-        path.unlink(missing_ok=True)  # nothing changed: back to the defaults
-        return settings
-    path.parent.mkdir(parents=True, exist_ok=True)  # data/ may not exist yet
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(path)
+    with saving.lock_for(path):
+        if settings == empty():
+            path.unlink(missing_ok=True)  # nothing changed: back to the defaults
+            saving.settled(path)
+        else:
+            saving.write_text(path, json.dumps(settings, indent=2, ensure_ascii=False))
     return settings
 
 

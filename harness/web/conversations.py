@@ -5,54 +5,53 @@ steps the web page draws (events), so a conversation can be reopened
 exactly as it was and continued.
 """
 import json
-import pathlib
 import re
 import time
 import uuid
 
-from harness import paths
+from harness import paths, saving
 from harness.features import lab_settings
+from harness.web.tally import Tally
 
 DIR = paths.DATA / "conversations"
-_ID = re.compile(r"^[0-9a-z-]{8,40}$")  # what new_id() makes; anything else is refused
+_ID = re.compile(r"[0-9a-z-]{8,40}")  # what new_id() makes (the whole id: fullmatch); anything else is refused
 
 
 def new_id():
+    """A new id, for a conversation or a comparison: when it was made, then six random letters and digits."""
     return time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
 
 
 def _file(conv_id):
-    if not isinstance(conv_id, str) or not _ID.match(conv_id):
+    if not isinstance(conv_id, str) or not _ID.fullmatch(conv_id):
         raise ValueError("not a conversation id")  # also stops paths like ../../somewhere
-    return DIR / f"{conv_id}.json"
+    return saving.inside(DIR, f"{conv_id}.json")  # (and checked again: it can only be a file of DIR)
 
 
 def save(conv_id, title, messages, events, frozen=None, kind=None, origin=None, checkpoints=None):
     """`frozen`: the system prompt and tools this conversation keeps, when edits apply per conversation.
     `checkpoints`: the workspace's files before each message ({"1": manifest, ..., "after": manifest}),
     so Rewind can undo them (features/checkpoints.py)."""
-    DIR.mkdir(parents=True, exist_ok=True)  # data/ may not exist yet
     path = _file(conv_id)
-    created = time.time()
-    if path.exists():
-        created = json.loads(path.read_text(encoding="utf-8")).get("created", created)
-    data = {"id": conv_id, "title": title, "created": created, "updated": time.time(),
-            "runs": runs(events), "messages": messages, "events": events}
-    if frozen:
-        data["frozen"] = frozen
-    if kind:
-        data["kind"] = kind  # e.g. "compare": one side of a comparison, kept for inspecting
-    if origin:
-        data["origin"] = origin  # e.g. {"comparison": id, "side": "A"}: where it came from
-    if checkpoints:
-        data["checkpoints"] = checkpoints
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(path)  # write-then-rename, so a crash can't leave a half-written file
+    with saving.lock_for(path):  # (read when it was created, then save, as one step)
+        created = time.time()
+        if path.exists():
+            created = json.loads(saving.read_text(path)).get("created", created)
+        data = {"id": conv_id, "title": title, "created": created, "updated": time.time(),
+                "runs": runs(events), "messages": messages, "events": events}
+        if frozen:
+            data["frozen"] = frozen
+        if kind:
+            data["kind"] = kind  # e.g. "compare": one side of a comparison, kept for inspecting
+        if origin:
+            data["origin"] = origin  # e.g. {"comparison": id, "side": "A"}: where it came from
+        if checkpoints:
+            data["checkpoints"] = checkpoints
+        saving.write_text(path, json.dumps(data, ensure_ascii=False))
 
 
 def load(conv_id):
-    return json.loads(_file(conv_id).read_text(encoding="utf-8"))
+    return json.loads(saving.read_text(_file(conv_id)))
 
 
 def delete(conv_id):
@@ -62,7 +61,7 @@ def delete(conv_id):
         return
     trash = DIR / ".deleted"
     trash.mkdir(parents=True, exist_ok=True)
-    path.replace(trash / path.name)
+    path.replace(saving.inside(trash, path.name))
 
 
 def purge_deleted(days=7, now=None):
@@ -101,7 +100,7 @@ def restore(conv_id):
         path = _file(conv_id)
     except ValueError:
         return False
-    kept = DIR / ".deleted" / path.name
+    kept = saving.inside(DIR / ".deleted", path.name)
     if not kept.exists():
         return False
     kept.replace(path)
@@ -169,7 +168,7 @@ def run_stats(data, seq):
     events = data["events"]
     start = events.index(e)
     end = next((i for i in range(start + 1, len(events)) if events[i].get("kind") == "user"), len(events))
-    tools, calls, read, wrote, spent, priced = [], [], 0, 0, 0.0, False
+    tally = Tally()  # the calls, tokens, cost and tools, counted as Compare counts a run
     approved, asked_at, waited = [], {}, 0.0  # tools you allowed, and how long the run waited for you
     out = {"label": "Saved run", "conversation": data.get("id"), "provider": None, "model": None, "config": None}
     began = {}
@@ -184,22 +183,12 @@ def run_stats(data, seq):
         if step == "request":
             began[sub] = x["time"]
         elif step == "response":
-            u = x.get("usage") or {}
-            read += ((u.get("input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
-                     + (u.get("cache_creation_input_tokens") or 0))
-            wrote += u.get("output_tokens") or 0
-            if x.get("cost") is not None:
-                spent += x["cost"]
-                priced = True
-            calls.append({"turn": x.get("turn"), "sub": sub, "input_tokens": u.get("input_tokens") or 0,
-                          "cache_read": u.get("cache_read_input_tokens") or 0, "output_tokens": u.get("output_tokens") or 0,
-                          "cost": x.get("cost"), "seconds": round(x["time"] - began.get(sub, x["time"]), 1)})
+            tally.response(x.get("usage"), x.get("cost"), x.get("turn"), sub,
+                           round(x["time"] - began.get(sub, x["time"]), 1))
         elif kind == "tool_call":
-            tools.append({"id": x.get("id"), "name": x["name"], "input": x.get("input", {})})
-        elif kind == "tool_result" and x.get("outcome") in ("blocked", "declined", "hook_blocked"):
-            for t in tools:
-                if t["id"] == x["result"].get("tool_use_id"):
-                    t["blocked"] = True
+            tally.tool_call(x.get("id"), x["name"], x.get("input", {}))
+        elif kind == "tool_result":
+            tally.tool_result((x.get("result") or {}).get("tool_use_id"), x.get("outcome"))
         elif kind == "approval":
             asked_at[x["id"]] = (x["time"], x.get("tool"))
         elif kind == "decision" and x["id"] in asked_at:
@@ -215,9 +204,6 @@ def run_stats(data, seq):
             out["error"] = "You stopped this message before it finished."
         elif kind == "done":
             out["seconds"] = round(x["time"] - e["time"] - waited, 1)  # without the time spent waiting for you
-    for t in tools:
-        t.pop("id", None)
-    out.update(tools=tools, calls=calls, tokens_read=read, tokens_written=wrote, cost=spent if priced else None,
-               approved=approved, waited=round(waited, 1))
+    out.update(tally.figures(), approved=approved, waited=round(waited, 1))
     out.setdefault("seconds", 0)
     return out

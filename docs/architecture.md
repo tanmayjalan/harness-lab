@@ -22,11 +22,12 @@ Everything else is an add-on to that loop, one idea per file in [`harness/featur
 ## What's where
 
 ```
-Harness/
+harness-lab/
 ├── setup.bat                get ready and check: Python, claude -p, API keys
 ├── start.bat, stop.bat      start / stop the web page
 ├── scripts/                 the PowerShell scripts that do the work for the three .bat files
 ├── requirements.txt         Python packages (setup.bat installs them)
+├── pyproject.toml           the same packages for other tools, and the settings of the code checker (ruff)
 │
 ├── harness/                 ALL THE CODE
 │   ├── core/                the essentials: read these first
@@ -39,10 +40,12 @@ Harness/
 │   │   ├── office_tools.py  40 pretend office tools (book_room, request_leave, ...): a long tool list to try
 │   │   ├── providers.py     one loop, several AI services: only the address, key, model and prices change
 │   │   ├── local_models.py  models on your own server (Ollama, LM Studio): its address, its models, why not
+│   │   ├── local_only.py    the web server and the mock answer only requests addressed to this computer
 │   │   └── mock_server.py   a stand-in for the Anthropic API that gets its replies from `claude -p`
 │   ├── features/            add-ons to the loop, one idea per file
 │   │   ├── memory.py        "About you": facts the harness adds to every conversation; the remember_fact tool
 │   │   ├── lab_settings.py  your edits to the prompt, tool descriptions and permissions (Settings)
+│   │   ├── message_setup.py what one message is sent with, built from your settings (page, terminal, Compare)
 │   │   ├── planning.py      the model keeps a step-by-step plan for bigger tasks
 │   │   ├── skills.py        instructions the model loads only when it needs them (config/skills/)
 │   │   ├── tool_search.py   too many tools: find_tool sends a tool's details only once the model needs it
@@ -59,11 +62,13 @@ Harness/
 │   │   ├── static/          the built page (made from ui/ by `npm run build`; kept in git)
 │   │   ├── conversations.py saving and reopening conversations, and the setup each message used
 │   │   ├── compare.py       one question with two or three setups side by side, run 1, 3 or 5 times each
+│   │   ├── tally.py         adds up a run's calls, tokens and cost, and the tools that didn't run
 │   │   ├── sandbox.py       the page on a throwaway copy of your data
 │   │   └── jsonify.py       turns the API's reply objects into plain JSON for the page
 │   ├── cli.py               the terminal version (it follows your page settings too)
 │   ├── evals.py             scores a setup on fixed questions (config/evals.json); used by the Evals tab too
 │   ├── words.py             small wording helpers ("1 fact", "2 facts")
+│   ├── saving.py            saving a file safely, even when two saves happen at the same moment
 │   └── paths.py             where every folder is
 │
 ├── config/                  FILES YOU'RE MEANT TO EDIT
@@ -74,7 +79,7 @@ Harness/
 │
 ├── ui/                      THE WEB PAGE'S SOURCE (React + TypeScript + Tailwind, built with Vite)
 ├── workspace/               THE MODEL'S FOLDER: its file tools work here without asking (sample files inside,
-│                            and handbook/: 26 short policies of a made-up company, to search)
+│                            and handbook/: 25 short policies of a made-up company, to search)
 ├── examples/                demo_mcp_server.py, a tiny MCP server with text tools
 ├── tests/                   offline tests (no model calls)
 ├── docs/                    these pages
@@ -108,7 +113,7 @@ only the address, key, model and prices change.
 
 | Provider | Needs | Notes |
 |---|---|---|
-| **mock** (default) | Claude Code, logged in | [`mock_server.py`](../harness/core/mock_server.py) imitates the Anthropic API and gets its replies from `claude -p`. Free on your plan, but each call takes about 5 to 30 s. See [what the mock can't show](limitations.md) |
+| **mock** (default) | Claude Code, signed in | [`mock_server.py`](../harness/core/mock_server.py) imitates the Anthropic API and gets real Claude replies from `claude -p`, on your Claude Code plan at no extra charge. Each call takes about 5 to 30 s. See [what the mock can't show](limitations.md) |
 | **anthropic** | `ANTHROPIC_API_KEY` | the real Anthropic API, paid per use |
 | **deepseek** | `DEEPSEEK_API_KEY` | DeepSeek's Anthropic-compatible API, paid per use |
 | **ollama**, **lmstudio**, **custom** | a server you run | a model on your own computer (or another you choose), free. The servers take Anthropic-format requests at `/v1/messages`, so only the address changes. [`local_models.py`](../harness/core/local_models.py) keeps the addresses (`data/local_servers.json`), asks each server which models it has (`/v1/models`; Ollama also says which can use tools) and says why one can't be used. See [Models on your own computer](getting-started.md#models-on-your-own-computer) |

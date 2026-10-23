@@ -450,8 +450,8 @@ export const CONCEPTS = {
   mock: {
     group: 'Basics',
     term: 'the mock (claude -p)',
-    plain: "free replies from Claude Code",
-    short: "A provider that imitates a real one. Its replies come from Claude Code's claude -p: free, but each model call takes about 5 to 30 seconds and the token numbers are estimates.",
+    plain: "real Claude replies through your Claude Code plan",
+    short: "A provider that imitates a real one. Its replies come from Claude Code's claude -p: real Claude replies through your Claude Code plan, at no extra charge. Each model call takes about 5 to 30 seconds and the token numbers are estimates.",
     long: [
       'The mock starts a new claude -p for every call, so it costs you nothing extra, cannot cache and does not stream. Its token counts are guesses (about 4 characters a token), priced as the model it imitates, so the page marks them ≈.',
       'Switch to the Anthropic API or DeepSeek to see real numbers.',

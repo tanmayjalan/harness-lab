@@ -5,9 +5,8 @@ feels like "memory" is the harness keeping facts in a file (profile.json) and
 putting the ones you've ticked into the system prompt of every request.
 """
 import json
-import pathlib
 
-from harness import paths
+from harness import paths, saving
 
 PATH = paths.DATA / "profile.json"
 MAX_FACTS = 30
@@ -23,13 +22,21 @@ STARTER = [
 
 def load(path=None):
     path = path or PATH
-    try:
-        return clean(json.loads(pathlib.Path(path).read_text(encoding="utf-8"))["facts"])
-    except FileNotFoundError:
-        return [dict(f) for f in STARTER]
+    # Read, check and (if damaged) move aside as one step, so a load at the same moment waits and then finds
+    # no file, instead of trying to move it too
+    with saving.lock_for(path):
+        try:
+            text = saving.read_text(path)
+        except FileNotFoundError:
+            return [dict(f) for f in STARTER]
+        try:  # (no limit on how many: a profile edited by hand to more is read whole; saving checks the limit)
+            return clean(json.loads(text)["facts"], limit=False)
+        except (ValueError, KeyError, TypeError) as e:  # damaged: kept aside, not overwritten by the next save
+            saving.set_aside(path, e)
+            return [dict(f) for f in STARTER]
 
 
-def clean(facts):
+def clean(facts, limit=True):
     """Check the shape and limits; rows without a label are dropped. Raises ValueError if it's not a list of facts."""
     if not isinstance(facts, list):
         raise ValueError("facts must be a list")
@@ -40,7 +47,7 @@ def clean(facts):
         label = str(f.get("label", "")).strip()[:60]
         if label:
             out.append({"label": label, "value": str(f.get("value", "")).strip()[:500], "share": bool(f.get("share"))})
-    if len(out) > MAX_FACTS:
+    if limit and len(out) > MAX_FACTS:
         raise ValueError(f"at most {MAX_FACTS} facts")
     return out
 
@@ -48,11 +55,7 @@ def clean(facts):
 def save(facts, path=None):
     path = path or PATH
     facts = clean(facts)
-    path = pathlib.Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)  # data/ may not exist yet
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"facts": facts}, indent=2, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(path)  # write-then-rename, so a crash can't leave a half-written file
+    saving.write_text(path, json.dumps({"facts": facts}, indent=2, ensure_ascii=False))
     return facts
 
 
@@ -112,16 +115,17 @@ def find(facts, label):
 
 def remember(label, value, path=None):
     """Add a fact (or update the one with the same label) and share it."""
-    facts = load(path)
     label, value = str(label).strip(), str(value).strip()
     if not label or not value:
         raise ValueError("both label and value are needed")
-    old = find(facts, label)
-    if old:
-        old["value"], old["share"] = value, True
-    else:
-        facts.append({"label": label, "value": value, "share": True})
-    save(facts, path)
+    with saving.lock_for(path or PATH):  # load, change and save as one step, so a fact saved meanwhile isn't lost
+        facts = load(path)
+        old = find(facts, label)
+        if old:
+            old["value"], old["share"] = value, True
+        else:
+            facts.append({"label": label, "value": value, "share": True})
+        save(facts, path)
     return f"Saved to the user's profile: {label}: {value}. It will be shared in their future conversations."
 
 

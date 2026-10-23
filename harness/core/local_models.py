@@ -12,7 +12,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from harness import paths
+from harness import paths, saving
 from harness.core import local_only
 
 PATH = paths.DATA / "local_servers.json"  # {"ollama": "http://...", ...}: only the addresses you changed
@@ -38,8 +38,7 @@ def save(name, url):
     url = clean_url(url)
     saved = load()
     saved[name] = url
-    PATH.parent.mkdir(parents=True, exist_ok=True)
-    PATH.write_text(json.dumps(saved, indent=2), encoding="utf-8")
+    saving.write_text(PATH, json.dumps(saved, indent=2))
     forget()
     return url
 

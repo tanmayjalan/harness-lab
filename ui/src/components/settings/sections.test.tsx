@@ -150,6 +150,15 @@ describe('the drawer footer', () => {
     useUi.setState({ settingsOpen: false })
   })
 
+  // A saved file the server couldn't read is said on every section: it can explain any setting back at its default
+  it("says when a saved file couldn't be read", () => {
+    server.setState({ settings: { ...baseSettings, damaged: ['lab_settings.json was moved aside and the defaults are used.'] } as Settings })
+    useUi.setState({ settingsOpen: true, settingsSection: 'memory' })
+    wrap(<SettingsDrawer />)
+    expect(screen.getByText(/A saved file couldn't be read: lab_settings\.json was moved aside/)).toBeInTheDocument()
+    useUi.setState({ settingsOpen: false })
+  })
+
   it('maps each kind of change to its section', () => {
     expect(sectionOf('the system prompt')).toBe('prompt')
     expect(sectionOf('2 tool descriptions')).toBe('tools')
