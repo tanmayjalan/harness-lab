@@ -9,6 +9,6 @@
 ## Checks
 
 - [ ] `.venv\Scripts\python -m unittest discover -s tests` passes
-- [ ] For page changes: `npm run typecheck` and `npm test` pass in `ui/`, and the rebuilt `harness/web/static/` is included
+- [ ] For page changes: `npm run typecheck`, `npm run lint` and `npm test` pass in `ui/`, and the rebuilt `harness/web/static/` is included
 - [ ] Docs updated if behaviour or a heading changed
 - [ ] Nothing personal or secret is included (no keys, no `data/`)

@@ -52,6 +52,7 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
       - name: The built page in git matches ui/
         run: |

@@ -2,6 +2,13 @@
 
 What changed in the Harness lab, newest first.
 
+## Unreleased
+
+- The page's code is checked with ESLint (`npm run lint`, also in CI): mistakes, and that each React effect
+  lists what it uses. TypeScript 7 has no API ESLint can call yet, so ESLint reads the code with Microsoft's
+  TypeScript 6 package; `tsc` is still TypeScript 7.
+- Fixed a page test that could never fail: its pattern held invisible characters instead of `\b`.
+
 ## 0.1.0 (23 October 2026)
 
 The first tagged release: everything a full review of the lab found, fixed.
