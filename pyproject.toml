@@ -9,7 +9,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
-    "anthropic>=1.11,<2",
+    "anthropic>=1.11,<3",
     "tzdata",
     "mcp>=2.3,<3",
 ]
